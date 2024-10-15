@@ -6,6 +6,7 @@ import aiohttp
 import os
 import logging
 from typing import Optional
+from datetime import datetime
 
 from config import (
     DISCORD_BOT_TOKEN,
@@ -49,34 +50,16 @@ async def on_ready():
     user = await bot.fetch_user(DISCORD_USER_ID)
     await user.send(f"```Type {COMMAND_PREFIX}help for a list of available commands.```")
 
-    def check(msg):
-        return msg.author == user and isinstance(msg.channel, discord.DMChannel)
-
-    # Character selection
-    hello_message = "Hello! Welcome to the AI Roleplay Bot. Here are the available characters:\n"
-    character_list = "\n".join(characters.keys())
-    await user.send(f"```{hello_message}{character_list}```")
-
-    await user.send("```Please enter the desired character name:```")
-    msg = await bot.wait_for('message', check=check)
-    character_name = msg.content.strip()
-
-    # Initialize managers
-    conversation_manager = ConversationManager(character_name)
-    tts_manager = TTSManager(character_name, conversation_manager)
-    image_manager = ImageManager(conversation_manager, character_name)
+    # Initialize managers with Layla as the character
+    conversation_manager = ConversationManager("Layla")
+    tts_manager = TTSManager("Layla", conversation_manager)
+    image_manager = ImageManager(conversation_manager, "Layla")
     replicate_manager = ReplicateManager()
 
     # Set up log file
-    await user.send("```Please enter the desired name for the log file:```")
-    try:
-        msg = await bot.wait_for('message', check=check, timeout=30)
-        log_file_name = msg.content.strip()
-        conversation_manager.set_log_file(log_file_name)
-        await user.send(f"```Log file set to: {conversation_manager.log_file}```")
-    except asyncio.TimeoutError:
-        await user.send("```Timed out waiting for log file name. Using default log file.```")
-        conversation_manager.set_log_file(None)
+    log_file_name = f"layla_conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    conversation_manager.set_log_file(log_file_name)
+    await user.send(f"```Log file set to: {conversation_manager.log_file}```")
 
     bot_initialized = True
 
@@ -137,8 +120,14 @@ async def on_message(message):
 async def process_message(message, content):
     """Process a message and generate a response."""
     try:
+        # Add day of the week and time to the user's message
+        current_time = datetime.now()
+        day_of_week = current_time.strftime("%A")
+        time = current_time.strftime("%I:%M %p")
+        content_with_time = f"{content}\n\nCurrent day: {day_of_week}\nCurrent time: {time}"
+
         # Handle conversation and generate response
-        response_text = await api_manager.generate_response(content, conversation_manager.get_conversation(), conversation_manager.system_prompt)
+        response_text = await api_manager.generate_response(content_with_time, conversation_manager.get_conversation(), conversation_manager.system_prompt)
         
         if response_text:
             conversation_manager.add_user_message(content)
@@ -230,7 +219,13 @@ async def say(ctx):
             await ctx.send("No preceding message found in the conversation.")
             return
 
-    await tts_manager.send_tts_file(ctx, tts_text)
+    # Generate the audio file regardless of TTS being enabled
+    audio_file = await tts_manager.generate_tts_audio_always(tts_text)
+    
+    if audio_file:
+        await ctx.send(file=discord.File(audio_file, filename="tts_audio.mp3"))
+    else:
+        await ctx.send("Failed to generate TTS audio.")
 
 @bot.command()
 async def set_voice(ctx, voice_id):

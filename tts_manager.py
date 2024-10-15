@@ -110,3 +110,8 @@ class TTSManager:
         except Exception as e:
             logger.exception(f"Exception occurred while generating TTS: {str(e)}")
             return None
+
+    async def generate_tts_audio_always(self, text):
+        """Generate TTS audio regardless of whether TTS is enabled or not."""
+        tts_text = self.get_tts_text(text)
+        return await self.generate_tts_file(tts_text)
