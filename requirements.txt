@@ -1,11 +1,5 @@
-discord.py==2.3.2
-aiohttp==3.9.1
-Pillow==10.1.0
-python-dotenv==1.0.0
-replicate==0.22.0
-asyncio==3.4.3
-anthropic==0.18.0
-openai==1.6.1
-elevenlabs==0.2.27
-python-dateutil==2.8.2
-requests==2.31.0
+discord.py
+python-dotenv
+aiohttp
+elevenlabs
+replicate

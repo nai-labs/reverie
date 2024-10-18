@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 import aiohttp
 import os
+import json
 import logging
 from typing import Optional
 from datetime import datetime
@@ -17,7 +18,9 @@ from config import (
     OPENROUTER_MODELS,
     COMMAND_PREFIX,
     LOG_LEVEL,
-    LOG_FORMAT
+    LOG_FORMAT,
+    MEMORY_ENABLED,
+    MEMORY_FILE_PATH
 )
 from conversation_manager import ConversationManager
 from tts_manager import TTSManager
@@ -27,8 +30,12 @@ from replicate_manager import ReplicateManager
 from characters import characters
 
 # Set up logging
-logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Disable logging for discord.py
+discord_logger = logging.getLogger('discord')
+discord_logger.setLevel(logging.ERROR)
 
 # Set up Discord bot
 intents = discord.Intents.all()
@@ -41,44 +48,63 @@ conversation_manager: Optional[ConversationManager] = None
 tts_manager: Optional[TTSManager] = None
 image_manager: Optional[ImageManager] = None
 replicate_manager: Optional[ReplicateManager] = None
+current_character = "Layla"  # Default character
+
+class MemoryManager:
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.memories = self.load_memories()
+
+    def load_memories(self):
+        if os.path.exists(self.file_path):
+            with open(self.file_path, 'r') as f:
+                return json.load(f)
+        return {}
+
+    def save_memories(self):
+        with open(self.file_path, 'w') as f:
+            json.dump(self.memories, f)
+
+    def add_memory(self, key, value):
+        self.memories[key] = value
+        self.save_memories()
+
+    def get_memory(self, key):
+        return self.memories.get(key)
+
+    def get_all_memories(self):
+        return self.memories
+
+    def clear_memories(self):
+        self.memories = {}
+        self.save_memories()
+
+memory_manager = MemoryManager(MEMORY_FILE_PATH)
+
+async def initialize_managers(character_name):
+    global conversation_manager, tts_manager, image_manager, replicate_manager, bot_initialized
+    conversation_manager = ConversationManager(character_name)
+    tts_manager = TTSManager(character_name, conversation_manager)
+    image_manager = ImageManager(conversation_manager, character_name)
+    replicate_manager = ReplicateManager()
+
+    # Set up log file
+    log_file_name = f"{character_name.lower()}_conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    conversation_manager.set_log_file(log_file_name)
+    logger.info(f"Log file set to: {conversation_manager.log_file}")
+    
+    bot_initialized = True
 
 @bot.event
 async def on_ready():
     """Event handler for when the bot is ready and connected to Discord."""
-    global conversation_manager, tts_manager, image_manager, replicate_manager, bot_initialized
+    global bot_initialized, current_character
     logger.info(f'Bot is ready. Logged in as {bot.user.name}')
     user = await bot.fetch_user(DISCORD_USER_ID)
     await user.send(f"```Type {COMMAND_PREFIX}help for a list of available commands.```")
 
-    # Initialize managers with Layla as the character
-    conversation_manager = ConversationManager("Layla")
-    tts_manager = TTSManager("Layla", conversation_manager)
-    image_manager = ImageManager(conversation_manager, "Layla")
-    replicate_manager = ReplicateManager()
-
-    # Set up log file
-    log_file_name = f"layla_conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-    conversation_manager.set_log_file(log_file_name)
-    await user.send(f"```Log file set to: {conversation_manager.log_file}```")
-
-    bot_initialized = True
-
-    # Send available commands
-    await user.send(f"""```Available commands:
-{COMMAND_PREFIX}delete - Delete the last message
-{COMMAND_PREFIX}edit <new_content> - Edit the last message
-{COMMAND_PREFIX}narration - Toggle narration
-{COMMAND_PREFIX}tts - Toggle TTS
-{COMMAND_PREFIX}llm - Switch LLM
-{COMMAND_PREFIX}claude_model [model_name] - Switch or view Claude models
-{COMMAND_PREFIX}say - Generate TTS for the last message or a specified text
-{COMMAND_PREFIX}resume <directory_path> - Resume conversation from a log file
-{COMMAND_PREFIX}selfie - Generate a selfie image
-{COMMAND_PREFIX}talker - Generate a talking face video
-{COMMAND_PREFIX}set_expression <value> - Set expression scale
-{COMMAND_PREFIX}set_pose <value> - Set pose style
-{COMMAND_PREFIX}restart - Restart the bot
-{COMMAND_PREFIX}quit - Stop the bot```""")
+    # Initialize managers with the default character
+    await initialize_managers(current_character)
 
 @bot.event
 async def on_message(message):
@@ -126,12 +152,22 @@ async def process_message(message, content):
         time = current_time.strftime("%I:%M %p")
         content_with_time = f"{content}\n\nCurrent day: {day_of_week}\nCurrent time: {time}"
 
+        # Add memories to the content if memory is enabled
+        if MEMORY_ENABLED:
+            memories = memory_manager.get_all_memories()
+            memory_content = "\n".join([f"{key}: {value}" for key, value in memories.items()])
+            content_with_time += f"\n\nMemories:\n{memory_content}"
+
         # Handle conversation and generate response
         response_text = await api_manager.generate_response(content_with_time, conversation_manager.get_conversation(), conversation_manager.system_prompt)
         
         if response_text:
             conversation_manager.add_user_message(content)
             conversation_manager.add_assistant_response(response_text)
+
+            # Save memory if enabled
+            if MEMORY_ENABLED:
+                memory_manager.add_memory(f"memory_{len(memory_manager.memories) + 1}", content)
 
             # Send the response
             response_chunks = conversation_manager.split_response(response_text)
@@ -146,6 +182,31 @@ async def process_message(message, content):
     except Exception as e:
         logger.error(f"Error in process_message: {str(e)}", exc_info=True)
         await message.channel.send("I encountered an unexpected error while processing your message. Please try again later.")
+
+# Memory Commands
+
+@bot.command()
+async def toggle_memory(ctx):
+    """Toggle memory functionality."""
+    global MEMORY_ENABLED
+    MEMORY_ENABLED = not MEMORY_ENABLED
+    await ctx.send(f"Memory functionality is now {'enabled' if MEMORY_ENABLED else 'disabled'}.")
+
+@bot.command()
+async def show_memories(ctx):
+    """Display all stored memories."""
+    memories = memory_manager.get_all_memories()
+    if memories:
+        memory_text = "\n".join([f"{key}: {value}" for key, value in memories.items()])
+        await ctx.send(f"Stored memories:\n```{memory_text}```")
+    else:
+        await ctx.send("No memories stored.")
+
+@bot.command()
+async def clear_memories(ctx):
+    """Clear all stored memories."""
+    memory_manager.clear_memories()
+    await ctx.send("All memories have been cleared.")
 
 # Conversation Management Commands
 
@@ -460,14 +521,14 @@ async def llm(ctx, llm_name=None):
 async def restart(ctx):
     """Restart the bot."""
     await ctx.send("Restarting bot...")
-    logger.debug("Bot is restarting with code 42")
+    logger.info("Bot is restarting")
     os._exit(42)
 
 @bot.command()
 async def quit(ctx):
     """Stop the bot."""
     await ctx.send("Stopping the bot...")
-    logger.debug("Quit command initiated. Force exiting with code 0.")
+    logger.info("Quit command initiated. Force exiting.")
     os._exit(0)
 
 if __name__ == "__main__":
@@ -475,7 +536,7 @@ if __name__ == "__main__":
     try:
         bot.run(DISCORD_BOT_TOKEN)
     except SystemExit as e:
-        logger.debug(f"Bot is exiting with code {e.code}")
+        logger.info(f"Bot is exiting with code {e.code}")
         os._exit(e.code)
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}", exc_info=True)
