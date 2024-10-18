@@ -46,6 +46,9 @@ characters.py
 # Sensitive data
 .env
 config.py
+service_account.json
+credentials.json
+bot_memory.json
 
 # Dependency directories
 node_modules/

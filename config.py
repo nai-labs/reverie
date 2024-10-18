@@ -16,6 +16,10 @@ COMMAND_PREFIX = '!'
 LOG_LEVEL = logging.DEBUG
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
+# Memory configuration
+MEMORY_ENABLED = False
+MEMORY_FILE_PATH = 'bot_memory.json'
+
 # OpenRouter API configuration
 OPENROUTER_KEY = os.getenv('OPENROUTER_KEY')
 OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
@@ -35,12 +39,15 @@ CLAUDE_MODELS = {
 }
 
 OPENROUTER_MODELS = {
+    "x-ai/grok-2": "grok",
+    "inflection/inflection-3-pi": "pi",
     "openai/gpt-4o": "4o",
     "openai/chatgpt-4o-latest": "4o-latest",
     "openai/gpt-4o-mini": "mini", 
     "alpindale/magnum-72b": "magnum",
     "aetherwiing/mn-starcannon-12b": "nemo",
     "alpindale/goliath-120b": "goliath",
+    "nvidia/llama-3.1-nemotron-70b-instruct": "nemotron",
     "01-ai/yi-large": "yi",
     "google/gemini-pro-1.5": "gemini",
     "google/gemini-pro-1.5-exp": "gemini_exp",
@@ -89,7 +96,7 @@ LMSTUDIO_MAX_TOKENS = 1024
 DEFAULT_LLM = os.getenv('DEFAULT_LLM', 'anthropic')  # Can be "anthropic", "openrouter", or "lmstudio"
 
 # Set the default Claude model
-DEFAULT_CLAUDE_MODEL = "claude-3-opus-20240229"
+DEFAULT_CLAUDE_MODEL = "claude-3-5-sonnet-20240620"
 
 # ElevenLabs API configuration
 ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY')
