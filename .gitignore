@@ -45,7 +45,6 @@ characters.py
 
 # Sensitive data
 .env
-config.py
 
 # Dependency directories
 node_modules/

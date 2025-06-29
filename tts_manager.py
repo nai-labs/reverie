@@ -18,18 +18,12 @@ class TTSManager:
         self.current_voice_id = character_config.get("tts_url", "").split("/")[-1]
         self.voice_settings = character_config.get("voice_settings", ELEVENLABS_VOICE_SETTINGS)
         self.include_narration = False
-        self.tts_enabled = False
         logger.info(f"TTSManager initialized for character: {character_name}")
         logger.info(f"Current voice ID: {self.current_voice_id}")
-        logger.info(f"TTS enabled: {self.tts_enabled}")
 
     def toggle_narration(self):
         self.include_narration = not self.include_narration
         logger.info(f"Narration toggled: {self.include_narration}")
-
-    def toggle_tts(self):
-        self.tts_enabled = not self.tts_enabled
-        logger.info(f"TTS toggled: {self.tts_enabled}")
 
     def get_tts_text(self, message):
         if self.include_narration:
@@ -45,33 +39,27 @@ class TTSManager:
     def get_current_voice_id(self):
         return self.current_voice_id
 
-    async def send_tts(self, channel, text):
-        if self.tts_enabled:
-            tts_text = self.get_tts_text(text)
-            audio_path = await self.generate_tts_file(tts_text)
-            if audio_path:
-                await channel.send(file=discord.File(audio_path))
-                self.conversation_manager.set_last_audio_path(audio_path)
-            else:
-                logger.error("Failed to generate TTS file")
-                await channel.send("Failed to generate TTS.")
-        else:
-            logger.info("TTS is disabled. Skipping TTS generation.")
-
-    async def send_tts_file(self, ctx, text):
-        if not self.tts_enabled:
-            logger.info("TTS is disabled. Skipping TTS generation.")
-            await ctx.send("TTS is currently disabled. Use the 'tts' command to enable it.")
-            return
-
+    async def send_tts(self, bot, text):
+        user = await bot.fetch_user(bot.args.discord_id)
         tts_text = self.get_tts_text(text)
         audio_path = await self.generate_tts_file(tts_text)
         if audio_path:
-            await ctx.send(file=discord.File(audio_path))
+            await user.send(f"Generated TTS file: {os.path.basename(audio_path)}", file=discord.File(audio_path))
             self.conversation_manager.set_last_audio_path(audio_path)
         else:
             logger.error("Failed to generate TTS file")
-            await ctx.send("Failed to generate TTS.")
+            await user.send("Failed to generate TTS.")
+
+    async def send_tts_file(self, ctx, text):
+        user = await ctx.bot.fetch_user(ctx.bot.args.discord_id)
+        tts_text = self.get_tts_text(text)
+        audio_path = await self.generate_tts_file(tts_text)
+        if audio_path:
+            await user.send(f"Generated TTS file: {os.path.basename(audio_path)}", file=discord.File(audio_path))
+            self.conversation_manager.set_last_audio_path(audio_path)
+        else:
+            logger.error("Failed to generate TTS file")
+            await user.send("Failed to generate TTS.")
 
     async def generate_tts_file(self, text):
         if not ELEVENLABS_API_KEY:

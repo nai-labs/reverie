@@ -1,62 +1,56 @@
-# conversation_manager.py
+# adventure_manager.py
 import os
 import re
 from datetime import datetime
-from characters import characters
+from gamemasters import gamemasters
 
-class ConversationManager:
-    def __init__(self, character_name):
-        self.character_name = character_name
-        self.system_prompt = characters[character_name]["system_prompt"]
+class AdventureManager:
+    def __init__(self, gamemaster_name):
+        self.gamemaster_name = gamemaster_name
+        self.system_prompt = gamemasters[gamemaster_name]["system_prompt"]
         self.conversation = []
         self.log_file = ""
         self.subfolder_path = ""
         self.log_file_name_response = None
-        self.last_audio_path = None
-        self.last_selfie_path = None
+        self.last_scene_path = None
         self.output_folder = os.path.join(os.getcwd(), 'output')
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
 
-    def add_user_message(self, message):
-        if message != self.log_file_name_response:
-            self.conversation.append({"role": "user", "content": message})
-            self.save_message_to_log("User", message)
+    def add_player_action(self, action):
+        """Add a player's action to the conversation history."""
+        if action != self.log_file_name_response:
+            self.conversation.append({"role": "user", "content": action})
+            self.save_message_to_log("Player", action)
 
-    def add_assistant_response(self, response):
+    def add_gm_response(self, response):
+        """Add a GM's response to the conversation history."""
         self.conversation.append({"role": "assistant", "content": response})
-        self.save_message_to_log("Bot", response)
+        self.save_message_to_log("GM", response)
 
     def add_system_message(self, message):
-        """Add a system message to provide additional context."""
+        """Add a system message to provide additional context or game state information."""
         self.conversation.append({"role": "system", "content": message})
         self.save_message_to_log("System", message)
 
-    def delete_last_message(self):
-        if len(self.conversation) > 1:
-            return self.conversation.pop()
-        return None
-
-    def edit_last_message(self, new_content):
-        if len(self.conversation) > 1:
-            self.conversation[-1]["content"] = new_content
-            return self.conversation[-1]
-        return None
-
     def get_conversation(self):
+        """Get the full conversation history."""
         return self.conversation
 
     def get_last_message(self):
+        """Get the last message in the conversation."""
         if len(self.conversation) > 0:
             return self.conversation[-1]["content"]
         return None
 
     def split_response(self, response, chunk_size=2000):
+        """Split long responses into Discord-friendly chunks."""
         return [response[i:i+chunk_size] for i in range(0, len(response), chunk_size)]
 
     def set_log_file(self, log_file_name):
+        """Set up logging for the current adventure session."""
         if not log_file_name:
-            log_file_name = "latest_session"
+            log_file_name = "latest_adventure"
         
         subfolder_name = log_file_name
         self.subfolder_path = os.path.join(self.output_folder, subfolder_name)
@@ -71,12 +65,14 @@ class ConversationManager:
         self.log_file_name_response = None
 
     def save_message_to_log(self, role, message):
+        """Save a message to the adventure log file."""
         if self.log_file:
             with open(self.log_file, 'a', encoding='utf-8') as file:
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 file.write(f"[{timestamp}] **{role}**: {message}\n")
 
-    def resume_conversation(self, directory_path):
+    def resume_adventure(self, directory_path):
+        """Resume a previous adventure from a log file."""
         full_directory_path = os.path.join(self.output_folder, directory_path)
         if os.path.exists(full_directory_path):
             log_files = [f for f in os.listdir(full_directory_path) if f.endswith(".txt")]
@@ -85,13 +81,13 @@ class ConversationManager:
                 with open(log_file_path, 'r', encoding='utf-8') as file:
                     log_content = file.read()
 
-                conversation_pattern = re.compile(r'\*\*User\*\*: (.*?)\n.*?\*\*Bot\*\*: (.*?)\n', re.DOTALL)
+                conversation_pattern = re.compile(r'\*\*Player\*\*: (.*?)\n.*?\*\*GM\*\*: (.*?)\n', re.DOTALL)
                 matches = conversation_pattern.findall(log_content)
 
                 self.conversation = []
-                for user_msg, bot_msg in matches:
-                    self.conversation.append({"role": "user", "content": user_msg})
-                    self.conversation.append({"role": "assistant", "content": bot_msg})
+                for player_msg, gm_msg in matches:
+                    self.conversation.append({"role": "user", "content": player_msg})
+                    self.conversation.append({"role": "assistant", "content": gm_msg})
 
                 self.subfolder_path = full_directory_path
                 self.log_file = log_file_path
@@ -99,35 +95,24 @@ class ConversationManager:
                 return True
         return False
 
-    def save_conversation(self):
+    def save_adventure(self):
+        """Save the current adventure state to the log file."""
         if self.log_file:
             with open(self.log_file, 'w', encoding='utf-8') as file:
                 for message in self.conversation:
-                    role = message["role"].capitalize()
+                    role = "Player" if message["role"] == "user" else "GM" if message["role"] == "assistant" else "System"
                     content = message["content"]
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     file.write(f"[{timestamp}] **{role}**: {content}\n")
 
-    def set_last_audio_path(self, audio_path):
-        self.last_audio_path = audio_path
-        self.save_message_to_log("Bot", f"Generated audio: {os.path.basename(audio_path)}")
+    def set_last_scene_path(self, image_path):
+        """Set the path of the last generated scene image."""
+        self.last_scene_path = image_path
+        self.save_message_to_log("System", f"Generated scene image: {os.path.basename(image_path)}")
 
-    def get_last_audio_file(self):
-        audio_files = [f for f in os.listdir(self.subfolder_path) if f.endswith('.mp3')]
-        if audio_files:
-            return os.path.join(self.subfolder_path, max(audio_files, key=lambda x: os.path.getctime(os.path.join(self.subfolder_path, x))))
-        return None
-
-    def set_last_selfie_path(self, image_path):
-        self.last_selfie_path = image_path
-        self.save_message_to_log("Bot", f"Generated selfie: {os.path.basename(image_path)}")
-
-    def get_last_selfie_path(self):
-        """Get the path of the most recent selfie image."""
+    def get_last_scene_path(self):
+        """Get the path of the most recent scene image."""
         image_files = [f for f in os.listdir(self.subfolder_path) if f.endswith(('.png', '.jpg', '.jpeg'))]
         if image_files:
             return os.path.join(self.subfolder_path, max(image_files, key=lambda x: os.path.getctime(os.path.join(self.subfolder_path, x))))
         return None
-
-    def get_last_audio_and_selfie(self):
-        return self.last_audio_path, self.last_selfie_path

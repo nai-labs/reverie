@@ -2,20 +2,61 @@
 import aiohttp
 import json
 import logging
-from config import OPENROUTER_URL, ANTHROPIC_URL, OPENROUTER_HEADERS, ANTHROPIC_HEADERS, OPENROUTER_MODELS, CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL, ANTHROPIC_MAX_TOKENS, LMSTUDIO_MAX_TOKENS, DEFAULT_LLM, LMSTUDIO_URL, LMSTUDIO_HEADERS
+from config import (OPENROUTER_URL, ANTHROPIC_URL, OPENROUTER_HEADERS, ANTHROPIC_HEADERS, 
+                   OPENROUTER_MODELS, CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL, ANTHROPIC_MAX_TOKENS, 
+                   LMSTUDIO_MAX_TOKENS, DEFAULT_LLM, LMSTUDIO_URL, LMSTUDIO_HEADERS, OPENROUTER_MODEL)
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class APIManager:
-    def __init__(self):
+    def __init__(self, llm_settings=None):
+        # Set defaults first
+        # Set defaults first for main conversation LLM
         self.current_llm = DEFAULT_LLM
         self.current_claude_model = DEFAULT_CLAUDE_MODEL
-        self.current_openrouter_model = list(OPENROUTER_MODELS.keys())[0]
-        self.current_lmstudio_model = None
+        self.current_openrouter_model = OPENROUTER_MODEL
+        self.current_lmstudio_model = None # Assuming LMStudio is not the default
 
+        # Set defaults for media generation LLM (assuming OpenRouter is default)
+        self.media_llm_provider = "openrouter"
+        self.media_llm_model = "cohere/command-r-plus" # Default media model
+
+        # Override with llm_settings if provided
+        if llm_settings:
+            # Main LLM settings
+            if "main_provider" in llm_settings and "main_model" in llm_settings:
+                provider = llm_settings["main_provider"].lower()
+                model = llm_settings["main_model"].split(" (")[0] # Extract model name
+
+                if provider in ["anthropic", "openrouter", "lmstudio"]:
+                    self.current_llm = provider
+                    if provider == "anthropic":
+                        self.current_claude_model = model
+                    elif provider == "openrouter":
+                        self.current_openrouter_model = model
+                    elif provider == "lmstudio":
+                        self.current_lmstudio_model = model
+                else:
+                    logger.warning(f"Invalid main provider '{provider}' in llm_settings. Using default '{self.current_llm}'.")
+
+            # Media LLM settings
+            if "media_provider" in llm_settings and "media_model" in llm_settings:
+                media_provider = llm_settings["media_provider"].lower()
+                media_model = llm_settings["media_model"].split(" (")[0] # Extract model name
+
+                # Currently assuming media LLM is always OpenRouter, but structure allows expansion
+                if media_provider == "openrouter":
+                    self.media_llm_provider = media_provider
+                    # TODO: Validate if media_model is actually an OpenRouter model?
+                    self.media_llm_model = media_model
+                else:
+                    logger.warning(f"Invalid media provider '{media_provider}' in llm_settings. Using default '{self.media_llm_provider}'.")
+
+    # This is the correct generate_response method
     async def generate_response(self, message, conversation, system_prompt):
+        logger.info(f"APIManager: Generating response using LLM: {self.current_llm}") # Added for debugging
         if self.current_llm == "anthropic":
             response_text = await self.generate_anthropic_response(message, conversation, system_prompt)
         elif self.current_llm == "openrouter":
@@ -78,7 +119,55 @@ class APIManager:
                     logger.error(f"Error in generate_anthropic_response: {str(e)}", exc_info=True)
                 
                 return "I apologize, but I encountered an error while processing your request."
-            
+
+    # --- NEW METHOD START ---
+    async def generate_media_llm_response(self, system_prompt, user_prompt, max_tokens=128, temperature=0.3):
+        """Generates a response using the configured media LLM."""
+        logger.info(f"APIManager: Generating media response using LLM: {self.media_llm_provider} ({self.media_llm_model})")
+
+        # Currently only supports OpenRouter for media LLM
+        if self.media_llm_provider != "openrouter":
+            logger.error(f"Media LLM provider '{self.media_llm_provider}' is not supported. Only 'openrouter' is implemented.")
+            return None # Or raise an error
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        data = {
+            "model": self.media_llm_model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+
+        logger.debug(f"Media LLM (OpenRouter) Request - Model: {self.media_llm_model}")
+        logger.debug(f"Media LLM (OpenRouter) Request - Data: {json.dumps(data, indent=2)}")
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Using OPENROUTER_HEADERS defined in config
+                async with session.post(OPENROUTER_URL, json=data, headers=OPENROUTER_HEADERS) as response:
+                    response_json = await response.json()
+                    logger.debug(f"Media LLM (OpenRouter) Response Status: {response.status}")
+                    logger.debug(f"Media LLM (OpenRouter) Response: {json.dumps(response_json, indent=2)}")
+
+                    if response.status != 200:
+                        logger.error(f"Media LLM (OpenRouter) API Error: {response_json}")
+                        return None # Indicate error
+
+                    if 'choices' in response_json and len(response_json['choices']) > 0:
+                        response_text = response_json['choices'][0]['message']['content']
+                        return response_text.strip()
+                    else:
+                        logger.error("No choices in Media LLM (OpenRouter) response")
+                        return None # Indicate error
+        except Exception as e:
+            logger.error(f"Exception during Media LLM (OpenRouter) call: {e}", exc_info=True)
+            return None # Indicate error
+    # --- NEW METHOD END ---
+
     def get_current_llm(self):
         return self.current_llm
 
@@ -89,17 +178,30 @@ class APIManager:
             {"role": "user", "content": message}
         ]
 
+        data = {
+            "model": self.current_openrouter_model,
+            "messages": messages
+        }
+        
+        logger.debug(f"OpenRouter Request - Model: {self.current_openrouter_model}")
+        logger.debug(f"OpenRouter Request - Number of messages: {len(messages)}")
+
         async with aiohttp.ClientSession() as session:
-            async with session.post(OPENROUTER_URL, json={
-                "model": self.current_openrouter_model,
-                "messages": messages
-            }, headers=OPENROUTER_HEADERS) as response:
+            async with session.post(OPENROUTER_URL, json=data, headers=OPENROUTER_HEADERS) as response:
                 response_json = await response.json()
+                logger.debug(f"OpenRouter Response Status: {response.status}")
+                logger.debug(f"OpenRouter Response: {json.dumps(response_json, indent=2)}")
+                
+                if response.status != 200:
+                    logger.error(f"OpenRouter API Error: {response_json}")
+                    return f"Error: {response_json.get('error', {}).get('message', 'Unknown error')}"
+                
                 if 'choices' in response_json and len(response_json['choices']) > 0:
                     response_text = response_json['choices'][0]['message']['content']
                     return response_text
                 else:
-                    return "No response generated."
+                    logger.error("No choices in OpenRouter response")
+                    return "No response generated - missing choices in response."
 
     async def generate_lmstudio_response(self, message, conversation, system_prompt):
         messages = [
@@ -166,8 +268,4 @@ class APIManager:
                 return True
         return False
 
-    def get_current_model(self):
-        if self.current_llm == "anthropic":
-            return self.current_claude_model
-        else:
-            return self.current_openrouter_model
+# Removed duplicate get_current_model method that was here

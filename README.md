@@ -1,194 +1,223 @@
-![Discord Dreams Banner](dd.png)
+# Discord Dreams
 
-# Discord Dreams - AI Roleplay Bot
+A Discord bot framework for creating AI characters with multimodal capabilities including text conversation, voice synthesis, image generation, and video generation.
 
-So, you want to make an AI roleplay bot for Discord? Here's one. It's called Discord Dreams. It does stuff. Your imagination (and your API budget) is your limit!
+## Overview
 
-## Features
+Discord Dreams enables the creation of AI characters that can:
+- Engage in natural conversations using various LLM providers (Claude, OpenRouter, LMStudio)
+- Generate voice responses with character-specific TTS (ElevenLabs and Zonos)
+- Create contextual images based on conversation (Stable Diffusion and Replicate)
+- Generate animated videos with lip sync (Replicate and Hedra)
+- Maintain conversation history and character personas
 
-- **Multiple Characters**: Create as many AI characters as you want. Go nuts.
-- **AI Model Switching**: Use Claude, OpenRouter, or LMStudio. Choose your poison.
-- **Text-to-Speech**: Make your AI talk. Revolutionary, I know.
-- **Image Generation**: Your AI can send selfies. Because apparently that's a thing now.
-- **Conversation Management**: Edit or delete conversation history. Useful for when your AI says something stupid.
-- **Character Customization**: Adjust your AI's personality. Make it as annoying as you want. Or.. whatever.
-- **Organized Output**: All conversation logs and generated content are neatly organized in an 'output' folder. Because who doesn't love a tidy bot?
+## Setup
 
-## Prerequisites
-
-Here's what you need. Don't blame me if you can't figure it out:
-
-- Python 3.7+
+### Prerequisites
+- Python 3.8+
 - Discord Bot Token
-- API keys for Anthropic, OpenRouter, ElevenLabs, and Replicate
-- A Language Model (LLM)
-- ElevenLabs voices
-- Selfie and face files for Stable Diffusion
-- A system prompt
+- Required API Keys:
+  - Anthropic (Claude) or OpenRouter API key
+  - Replicate API key (for image/video generation)
+  - ElevenLabs API key (for TTS)
+  - Hedra API key (for video generation)
 
-## Installation
+### Installation
 
-### One-Click Installers (Recommended)
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd discord-dreams
+```
 
-Use these one-click installers to set up Discord Dreams:
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-1. Clone the repo:
-   ```
-   git clone https://github.com/nai-research/discord-dreams.git
-   cd discord-dreams
-   ```
+3. Configure environment variables in `.env`:
+```env
+DISCORD_BOT_TOKEN=your_discord_bot_token
+ANTHROPIC_API_KEY=your_anthropic_key
+OPENROUTER_API_KEY=your_openrouter_key
+REPLICATE_API_TOKEN=your_replicate_token
+ELEVENLABS_API_KEY=your_elevenlabs_key
+HEDRA_API_KEY=your_hedra_key
+INSIGHTFACE_MODEL_PATH="C:/path/to/your/inswapper_128.onnx"
+```
 
-2. Run the installer for your operating system:
+4. Configure characters in `characters.py` (see `characters_example.py` for template)
 
-   - For macOS:
-     ```
-     bash install_mac.sh
-     ```
+5. Configure users in `users.py`
 
-   - For Windows:
-     ```
-     install_windows.bat
-     ```
+## Core Components
 
-3. Follow the prompts to enter your API keys and other required information.
+### Launcher (launcher.py)
+- GUI interface for managing bot instances
+- Character/user selection
+- LLM provider configuration
+- Process monitoring
+- Conversation viewing
 
-4. The installer will create a `characters.py` file based on the `characters_example.py` template. You'll need to edit this file to add your own characters.
+### Character System (characters.py)
+- Character definitions
+- System prompts
+- Voice settings
+- Image generation settings
+- Scenario configuration
 
-5. Once the installation is complete, follow the instructions provided by the installer to run the bot.
+### Conversation Management (conversation_manager.py)
+- Message history tracking
+- Log file management
+- Context maintenance
+- Message formatting
 
-### Manual Installation
+### Media Generation
+- **TTS (tts_manager.py)**: Voice synthesis using ElevenLabs
+- **TTS (zonos_manager.py)**: Voice synthesis using a local Zonos server
+- **Images (image_manager.py)**: Selfie generation using Stable Diffusion
+- **Videos (replicate_manager.py)**: Video generation using various Replicate models (Kling, LatentSync, WAN)
+- **Videos (hedra_manager.py)**: Video generation using the Hedra API
 
-If you're feeling adventurous or the one-click installers don't work for you, here's how to do it manually:
-
-1. Clone the repo:
-   ```
-   git clone https://github.com/nai-research/discord-dreams.git
-   cd discord-dreams
-   ```
-
-2. Create and activate a virtual environment:
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows, use: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Set up your config:
-   - Create a `.env` file in the root directory
-   - Add your API keys and configuration:
-     ```
-     DISCORD_BOT_TOKEN=your_discord_bot_token
-     DISCORD_USER_ID=your_discord_user_id
-     OPENROUTER_KEY=your_openrouter_api_key
-     OPENROUTER_HTTP_REFERER=your_openrouter_http_referer
-     ANTHROPIC_API_KEY=your_anthropic_api_key
-     ELEVENLABS_API_KEY=your_elevenlabs_api_key
-     REPLICATE_API_TOKEN=your_replicate_api_token
-     DEFAULT_LLM=anthropic
-     ```
-
-5. Copy `characters_example.py` to `characters.py`:
-   ```
-   cp characters_example.py characters.py
-   ```
-
-6. Create an 'output' folder in the project root:
-   ```
-   mkdir output
-   ```
-
-## Character Setup
-
-1. Open `characters.py` in your favorite text editor. You'll see an example character setup.
-
-2. Customize the example character or add new characters following this format:
-
-   ```python
-   "character_name": {
-       "system_prompt": "Character description goes here.",
-       "image_prompt": "How the character looks, I guess.",
-       "tts_url": "https://api.elevenlabs.io/v1/text-to-speech/VOICE_ID_HERE",
-       "source_faces_folder": "path/to/faces/folder",
-       "voice_settings": {
-           "stability": 0.4,
-           "similarity_boost": 0.45,
-           "style": 0.5
-       }
-   }
-   ```
-
-3. Replace VOICE_ID_HERE with an ElevenLabs voice ID. Try not to pick something too annoying.
-
-4. Add as many characters as you want. Just don't go overboard, okay?
+### API Integration (api_manager.py)
+- LLM provider management
+- Model switching
+- API call handling
+- Response processing
 
 ## Usage
 
-1. Start the bot:
-   ```
-   python main.py
-   ```
+### Running the Bot
 
-2. Commands:
-   - `!help` - Shows commands. You'll probably need this.
-   - `!llm` - Switch AI models
-   - `!claude`, `!openrouter`, `!lmstudio` - Switch to specific models
-   - `!tts` - Toggle text-to-speech
-   - `!narration` - Toggle narration
-   - `!say` - Make the AI say something
-   - `!selfie` - Generate a profile pic
-   - `!video` - Make a talking animation
-   - `!talker` - More advanced video generation
-   - `!delete` - Delete the last message
-   - `!edit` - Edit a message
-   - `!resume` - Continue a previous conversation
-   - `!set_voice`, `!get_voice` - Manage AI voice
-   - `!restart` - Restart the bot
-   - `!quit` - Stop the bot
-
-## Output Organization
-
-All conversation logs and generated content are now neatly organized in an 'output' folder. Here's how it works:
-
-1. When you start a new conversation, you'll be prompted to enter a name for the log file.
-2. A new subfolder will be created in the 'output' folder with the given name.
-3. All files related to that conversation (logs, audio, images, videos) will be saved in this subfolder.
-4. To resume a conversation, use the `!resume` command followed by the subfolder name.
-
-Example folder structure:
-```
-project_root/
-├── output/
-│   ├── conversation_1/
-│   │   ├── conversation_1.txt
-│   │   ├── audio_files.mp3
-│   │   └── image_files.png
-│   ├── conversation_2/
-│   │   └── ...
-│   └── ...
-├── main.py
-├── conversation_manager.py
-└── ...
+1. Launch the GUI:
+```bash
+python launcher.py
 ```
 
-This new structure keeps your project tidy and makes it easier to manage multiple conversations. You're welcome.
+2. Select a user and character
+3. Configure LLM settings if needed
+4. Click "Deploy Bot"
 
-## Technical Details
+### Available Commands
 
-- Uses Discord.py
-- Asyncio for concurrent operations
-- Error handling and logging
-- Modular design
-- Multiple AI model support
-- Video generation with Replicate's API
-- Environment variables for configuration
-- Organized output structure for logs and generated content
+- `!say` - Generate TTS for the last message using ElevenLabs
+- `!speak` - Generate TTS for the last message using Zonos
+- `!pic` - Generate a contextual image using Stable Diffusion
+- `!klingat` - Generate a video with lip sync using Replicate's Kling and LatentSync models
+- `!hedra` - Generate a video with lip sync using Hedra
+- `!wan` - Generate a video from an image using Replicate's WAN I2V model
+- `!delete` - Delete the last message
+- `!edit <text>` - Edit the last message
+- `!resume <path>` - Resume a previous conversation
+
+### LLM Commands
+
+- `!claude <model>` - Switch Claude models
+- `!openrouter <model>` - Switch OpenRouter models
+- `!lmstudio <model>` - Switch LMStudio models
+- `!llm` - View current LLM settings
+
+### Zonos TTS Settings
+
+- `!set_emotion <emotion> <value>` - Set emotion for Zonos TTS (e.g., `!set_emotion happy 0.8`)
+- `!set_quality <value>` - Set voice quality for Zonos TTS (0.5-0.8)
+- `!set_speed <value>` - Set speaking rate for Zonos TTS (5-30)
+- `!set_pitch <value>` - Set pitch variation for Zonos TTS (0-300)
+
+### Video Generation Settings
+
+- `!set_expression <value>` - Set expression scale
+- `!set_pose <value>` - Set pose style
+- `!set_facerender <method>` - Set face render method
+- `!set_still_mode <true/false>` - Toggle still mode
+- `!set_use_enhancer <true/false>` - Toggle enhancer
+- `!set_use_eyeblink <true/false>` - Toggle eye blinking
+
+## Development Guide
+
+### Project Structure
+
+```
+discord-dreams/
+├── launcher.py          # GUI application
+├── next.py             # Main bot implementation
+├── characters.py       # Character definitions
+├── users.py           # User configurations
+├── config.py          # Global configuration
+├── api_manager.py     # LLM API handling
+├── conversation_manager.py  # Message management
+├── image_manager.py   # Image generation
+├── tts_manager.py     # ElevenLabs TTS
+├── zonos_manager.py   # Zonos TTS
+├── replicate_manager.py    # Replicate API for video/image
+├── hedra_manager.py      # Hedra API for video
+└── output/            # Generated media storage
+```
+
+### Key Files
+
+- **next.py**: Core bot implementation with command handling and event processing
+- **launcher.py**: GUI interface for bot management and monitoring
+- **characters.py**: Character definitions including prompts and settings
+- **conversation_manager.py**: Handles message history and logging
+- **image_manager.py**: Manages image generation with context awareness
+- **tts_manager.py**: Handles voice synthesis with ElevenLabs
+- **zonos_manager.py**: Handles voice synthesis with a local Zonos server
+- **replicate_manager.py**: Manages video and image generation with the Replicate API
+- **hedra_manager.py**: Manages video generation with the Hedra API
+- **api_manager.py**: Handles LLM provider integration and switching
+
+### Common Customization Points
+
+1. Character Creation
+   - Add a new character in `characters.py`
+   - Configure system prompt, voice, and image settings
+   - Set up a scenario and initial context
+
+2. Adding Commands
+   - Extend command handlers in `next.py`
+   - Follow existing command patterns
+   - Update help documentation
+
+3. Media Generation
+   - Modify prompt generation in `image_manager.py`
+   - Adjust video settings in `replicate_manager.py`
+   - Configure TTS parameters in `tts_manager.py` or `zonos_manager.py`
+
+4. LLM Integration
+   - Add new providers in `api_manager.py`
+   - Configure model settings in `config.py`
+   - Implement provider-specific handling
+
+### Best Practices
+
+1. Error Handling
+   - Use try/except blocks for API calls
+   - Provide meaningful error messages
+   - Log errors for debugging
+
+2. Resource Management
+   - Clean up temporary files
+   - Close connections properly
+   - Monitor memory usage
+
+3. Configuration
+   - Use environment variables for sensitive data
+   - Keep configuration in appropriate files
+   - Document required settings
+
+4. Testing
+   - Test new features with `test_*.py` files
+   - Verify API integrations
+   - Check resource cleanup
 
 ## Contributing
 
-If you want to contribute, go ahead. Just don't break anything.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
-That's it. Have fun with your AI roleplay bot, I guess.
+## License
+
+See the LICENSE file for details.
