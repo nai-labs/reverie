@@ -24,18 +24,55 @@ Discord Dreams enables the creation of AI characters that can:
 
 ### Installation
 
+#### Option 1: Universal Installer (Recommended)
+
 1. Clone the repository:
 ```bash
 git clone <repository-url>
 cd discord-dreams
 ```
 
-2. Install dependencies:
+2. Run the universal installer:
+```bash
+python install.py
+```
+
+The installer will:
+- Detect your platform (Windows/WSL/macOS/Linux)
+- Create a virtual environment
+- Install dependencies
+- Prompt for API keys
+- Set up configuration files
+- Provide platform-specific instructions
+
+#### Option 2: Manual Installation
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd discord-dreams
+```
+
+2. Create and activate virtual environment:
+
+**Windows:**
+```cmd
+python -m venv venv
+venv\Scripts\activate.bat
+```
+
+**WSL/macOS/Linux:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Configure environment variables in `.env`:
+4. Configure environment variables in `.env`:
 ```env
 DISCORD_BOT_TOKEN=your_discord_bot_token
 ANTHROPIC_API_KEY=your_anthropic_key
@@ -43,10 +80,11 @@ OPENROUTER_API_KEY=your_openrouter_key
 REPLICATE_API_TOKEN=your_replicate_token
 ELEVENLABS_API_KEY=your_elevenlabs_key
 HEDRA_API_KEY=your_hedra_key
-INSIGHTFACE_MODEL_PATH="C:/path/to/your/inswapper_128.onnx"
+# INSIGHTFACE_MODEL_PATH is auto-detected based on platform
+# Set manually only if you have a custom path
 ```
 
-4. Configure characters in `characters.py` (see `characters_example.py` for template)
+5. Configure characters in `characters.py` (see `characters_example.py` for template)
 
 5. Configure users in `users.py`
 
@@ -132,6 +170,59 @@ python launcher.py
 - `!set_still_mode <true/false>` - Toggle still mode
 - `!set_use_enhancer <true/false>` - Toggle enhancer
 - `!set_use_eyeblink <true/false>` - Toggle eye blinking
+
+## Platform-Specific Considerations
+
+### Windows
+- Audio playback uses `winsound` by default
+- All features should work out of the box
+- Virtual environment: `venv\Scripts\activate.bat`
+
+### WSL (Windows Subsystem for Linux)
+- **GUI Requirements**: The launcher GUI requires an X server:
+  - **WSLg** (Windows 11): Usually works automatically
+  - **VcXsrv** (Windows 10): Install and configure X server
+  - Set `DISPLAY` environment variable if needed: `export DISPLAY=:0`
+- **Audio**: May require PulseAudio configuration for audio playback
+- **Paths**: Windows drives accessible at `/mnt/c/`, `/mnt/d/`, etc.
+- **Dependencies**: Uses pygame/playsound for audio instead of winsound
+- Virtual environment: `source venv/bin/activate`
+
+### macOS
+- Audio playback uses pygame/playsound
+- **Homebrew recommended** for system dependencies
+- **INSIGHTFACE_MODEL_PATH**: Must be set manually if using Stable Diffusion
+- Virtual environment: `source venv/bin/activate`
+- **Python**: Use `python3` instead of `python` if needed
+
+### Linux
+- Audio playback uses pygame/playsound
+- **System packages**: May need to install audio libraries:
+  ```bash
+  sudo apt-get install python3-dev libasound2-dev  # Ubuntu/Debian
+  sudo dnf install python3-devel alsa-lib-devel    # Fedora
+  ```
+- **INSIGHTFACE_MODEL_PATH**: Must be set manually if using Stable Diffusion
+- Virtual environment: `source venv/bin/activate`
+
+### Troubleshooting
+
+#### Audio Issues
+1. **No audio playback**: Check if pygame or playsound is installed
+2. **WSL audio**: Configure PulseAudio or use Windows-side audio
+3. **Permission errors**: Ensure audio devices are accessible
+
+#### GUI Issues
+1. **WSL GUI not working**:
+   - Install VcXsrv or enable WSLg
+   - Set `DISPLAY=:0` in your environment
+   - Check firewall settings for X server connections
+2. **Font rendering issues**: Install system fonts or adjust tkinter settings
+
+#### Path Issues
+1. **INSIGHTFACE_MODEL_PATH**: Set environment variable for custom paths
+2. **WSL path mapping**: Use `/mnt/c/...` format for Windows drives
+3. **File permissions**: Ensure read/write access to output directories
 
 ## Development Guide
 

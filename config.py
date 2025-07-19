@@ -1,5 +1,6 @@
 # config.py
 import os
+import platform
 from dotenv import load_dotenv
 import logging
 
@@ -99,7 +100,22 @@ ELEVENLABS_OUTPUT_FORMAT = 'mp3_44100_192'
 
 # Stable Diffusion API configuration
 STABLE_DIFFUSION_URL = 'http://127.0.0.1:7860/sdapi/v1/txt2img'
-INSIGHTFACE_MODEL_PATH = os.getenv("INSIGHTFACE_MODEL_PATH", 'C:/AI/newforge/webui_forge_cu121_torch231/webui/models/insightface/inswapper_128.onnx')
+
+# Platform-aware path configuration for InsightFace model
+def get_default_insightface_path():
+    """Get the default InsightFace model path based on the current platform"""
+    windows_path = 'C:/AI/newforge/webui_forge_cu121_torch231/webui/models/insightface/inswapper_128.onnx'
+    
+    if platform.system() == 'Windows':
+        return windows_path
+    elif 'microsoft' in platform.uname().release.lower():  # WSL detection
+        # Convert Windows path to WSL mount path
+        return '/mnt/c/AI/newforge/webui_forge_cu121_torch231/webui/models/insightface/inswapper_128.onnx'
+    else:
+        # macOS/Linux - require environment variable to be set
+        return None
+
+INSIGHTFACE_MODEL_PATH = os.getenv("INSIGHTFACE_MODEL_PATH", get_default_insightface_path())
 
 # Replicate API configuration
 REPLICATE_API_TOKEN = os.getenv('REPLICATE_API_TOKEN')

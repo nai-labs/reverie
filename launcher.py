@@ -11,7 +11,25 @@ import psutil
 import re
 from datetime import datetime
 from PIL import Image, ImageTk
-import winsound
+import platform
+try:
+    import winsound
+    WINSOUND_AVAILABLE = True
+except ImportError:
+    WINSOUND_AVAILABLE = False
+
+try:
+    import pygame
+    pygame.mixer.init()
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+
+try:
+    from playsound import playsound
+    PLAYSOUND_AVAILABLE = True
+except ImportError:
+    PLAYSOUND_AVAILABLE = False
 import threading
 from users import users, list_users
 from characters import characters
@@ -184,7 +202,7 @@ class ConversationWindow:
             return None
 
     def play_audio(self, audio_path):
-        """Play an audio file in a separate thread"""
+        """Play an audio file in a separate thread using cross-platform method"""
         def play():
             try:
                 # Change button color to indicate playing
@@ -194,8 +212,39 @@ class ConversationWindow:
                     if tag.startswith('play_'):
                         self.text.tag_add('playing', f"{self.text.index('current')}-1c")
                 
-                # Play the audio
-                winsound.PlaySound(audio_path, winsound.SND_FILENAME)
+                # Try different audio playback methods based on platform and availability
+                audio_played = False
+                
+                # Method 1: Try winsound on Windows
+                if WINSOUND_AVAILABLE and platform.system() == "Windows":
+                    try:
+                        winsound.PlaySound(audio_path, winsound.SND_FILENAME)
+                        audio_played = True
+                    except Exception as e:
+                        print(f"Winsound failed: {e}")
+                
+                # Method 2: Try pygame if available
+                if not audio_played and PYGAME_AVAILABLE:
+                    try:
+                        pygame.mixer.music.load(audio_path)
+                        pygame.mixer.music.play()
+                        # Wait for playback to complete
+                        while pygame.mixer.music.get_busy():
+                            pygame.time.wait(100)
+                        audio_played = True
+                    except Exception as e:
+                        print(f"Pygame failed: {e}")
+                
+                # Method 3: Try playsound as fallback
+                if not audio_played and PLAYSOUND_AVAILABLE:
+                    try:
+                        playsound(audio_path)
+                        audio_played = True
+                    except Exception as e:
+                        print(f"Playsound failed: {e}")
+                
+                if not audio_played:
+                    raise Exception("No audio playback method available")
                 
                 # Reset button color
                 self.text.tag_remove('playing', "1.0", tk.END)
@@ -726,9 +775,54 @@ class BotLauncher:
             return
         
         try:
+            # Get the appropriate Python executable for the current platform
+            def get_python_executable():
+                import shutil
+                
+                # Check if current sys.executable is valid and accessible
+                if os.path.exists(sys.executable) and os.access(sys.executable, os.X_OK):
+                    # If sys.executable works and matches the platform, use it
+                    if ((platform.system() == "Windows" and sys.executable.endswith('.exe')) or
+                        (platform.system() != "Windows" and not sys.executable.endswith('.exe'))):
+                        return sys.executable
+                
+                # If we're on Windows, try to find appropriate Python
+                if platform.system() == "Windows" or os.name == 'nt':
+                    # First try local venv
+                    local_python = os.path.join("venv", "Scripts", "python.exe")
+                    if os.path.exists(local_python):
+                        return local_python
+                    
+                    # Try to find python.exe in PATH
+                    python_exe = shutil.which("python.exe")
+                    if python_exe:
+                        return python_exe
+                    
+                    # Fall back to just "python"
+                    return "python"
+                else:
+                    # For Unix-like systems (WSL, macOS, Linux)
+                    local_python = os.path.join("venv", "bin", "python")
+                    if os.path.exists(local_python):
+                        return local_python
+                    
+                    # Try python3 first, then python
+                    for python_name in ["python3", "python"]:
+                        python_exe = shutil.which(python_name)
+                        if python_exe:
+                            return python_exe
+                    
+                    # Last resort: use sys.executable even if it seems wrong
+                    return sys.executable
+            
+            python_exe = get_python_executable()
+            
+            print(f"Debug: Using Python executable: {python_exe}")
+            print(f"Debug: Platform: {platform.system()}, os.name: {os.name}")
+            
             # Launch the bot as a subprocess with its own process group
             cmd = [
-                sys.executable, 
+                python_exe, 
                 "next.py", 
                 "--user", selected_user, 
                 "--character", selected_char,
