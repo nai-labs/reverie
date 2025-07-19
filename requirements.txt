@@ -11,8 +11,8 @@ python-dateutil==2.8.2
 requests
 typing-extensions>=4.5.0  # Required for better type hints
 psutil>=5.9.0  # Required for process management
-playsound
 pygame>=2.0.0  # Required for cross-platform audio playback
+# playsound - Removed due to installation issues on newer Python versions
 gradio_client  # Required for Zonos TTS
 pydub
 opencv-python

@@ -25,11 +25,8 @@ try:
 except ImportError:
     PYGAME_AVAILABLE = False
 
-try:
-    from playsound import playsound
-    PLAYSOUND_AVAILABLE = True
-except ImportError:
-    PLAYSOUND_AVAILABLE = False
+# playsound removed due to installation issues - using pygame instead
+PLAYSOUND_AVAILABLE = False
 import threading
 from users import users, list_users
 from characters import characters
@@ -235,16 +232,29 @@ class ConversationWindow:
                     except Exception as e:
                         print(f"Pygame failed: {e}")
                 
-                # Method 3: Try playsound as fallback
-                if not audio_played and PLAYSOUND_AVAILABLE:
+                # Method 3: Try system commands as last resort
+                if not audio_played:
                     try:
-                        playsound(audio_path)
-                        audio_played = True
+                        import shutil
+                        if platform.system() == "Windows":
+                            # Use Windows Media Player command line
+                            os.system(f'powershell -c "(New-Object Media.SoundPlayer \'{audio_path}\').PlaySync();"')
+                            audio_played = True
+                        elif platform.system() == "Darwin":  # macOS
+                            os.system(f'afplay "{audio_path}"')
+                            audio_played = True
+                        elif platform.system() == "Linux":
+                            # Try common Linux audio players
+                            for player in ["paplay", "aplay", "play"]:
+                                if shutil.which(player):
+                                    os.system(f'{player} "{audio_path}"')
+                                    audio_played = True
+                                    break
                     except Exception as e:
-                        print(f"Playsound failed: {e}")
+                        print(f"System audio command failed: {e}")
                 
                 if not audio_played:
-                    raise Exception("No audio playback method available")
+                    raise Exception("No audio playback method available. Please ensure pygame is installed or audio system is configured.")
                 
                 # Reset button color
                 self.text.tag_remove('playing', "1.0", tk.END)
