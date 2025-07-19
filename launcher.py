@@ -20,8 +20,15 @@ except ImportError:
 
 try:
     import pygame
-    pygame.mixer.init()
-    PYGAME_AVAILABLE = True
+    # Try to initialize pygame mixer, but don't fail if no audio device
+    try:
+        pygame.mixer.init()
+        PYGAME_AVAILABLE = True
+    except pygame.error as e:
+        print(f"Warning: pygame audio initialization failed: {e}")
+        if 'microsoft' in platform.uname().release.lower():
+            print("Note: Audio in WSL requires PulseAudio setup or Windows-side audio redirection")
+        PYGAME_AVAILABLE = False
 except ImportError:
     PYGAME_AVAILABLE = False
 
