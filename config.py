@@ -44,6 +44,7 @@ OPENROUTER_MODELS = {
     "google/gemini-2.5-pro-preview": "gempro",
     "openai/gpt-4.1": "4.1",
     "x-ai/grok-3-beta": "grok",
+    "x-ai/grok-4": "grok4",
     "cohere/command-r-plus-04-2024": "command-R+",
     "mistralai/mistral-medium-3": "mixtral-med",
     "meta-llama/llama-4-maverick:free": "maverick"

@@ -1,22 +1,21 @@
-# Set the default behavior, in case people don't have core.autocrlf set.
+# .gitattributes
+
+# Set default behavior to automatically handle text files.
+# This will ensure that files are checked out with the OS-native line endings
+# (CRLF on Windows, LF on Linux/macOS) unless specified otherwise.
 * text=auto
 
-# Explicitly declare text files you want to always be normalized and converted
-# to native line endings on checkout.
-*.py text
-*.md text
-*.txt text
-*.json text
-*.js text
-*.html text
-*.css text
-*.sh text eol=lf
-*.bat text eol=crlf
+# Explicitly declare text files to always use LF line endings in the repository.
+# This is the standard for cross-platform projects.
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+.gitignore text eol=lf
+.env.example text eol=lf
 
-# Denote all files that are truly binary and should not be modified.
+# Declare specific file types as binary to prevent Git from changing them.
 *.png binary
 *.jpg binary
-*.gif binary
-*.mp3 binary
-*.mp4 binary
-*.webp binary
+*.onnx binary
+*.safetensors binary
