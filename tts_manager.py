@@ -6,7 +6,7 @@ from datetime import datetime
 import logging
 from config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_SETTINGS
 from characters import characters
-import discord 
+from characters import characters 
 
 logger = logging.getLogger(__name__)
 
@@ -39,27 +39,7 @@ class TTSManager:
     def get_current_voice_id(self):
         return self.current_voice_id
 
-    async def send_tts(self, bot, text):
-        user = await bot.fetch_user(bot.args.discord_id)
-        tts_text = self.get_tts_text(text)
-        audio_path = await self.generate_tts_file(tts_text)
-        if audio_path:
-            await user.send(f"Generated TTS file: {os.path.basename(audio_path)}", file=discord.File(audio_path))
-            self.conversation_manager.set_last_audio_path(audio_path)
-        else:
-            logger.error("Failed to generate TTS file")
-            await user.send("Failed to generate TTS.")
-
-    async def send_tts_file(self, ctx, text):
-        user = await ctx.bot.fetch_user(ctx.bot.args.discord_id)
-        tts_text = self.get_tts_text(text)
-        audio_path = await self.generate_tts_file(tts_text)
-        if audio_path:
-            await user.send(f"Generated TTS file: {os.path.basename(audio_path)}", file=discord.File(audio_path))
-            self.conversation_manager.set_last_audio_path(audio_path)
-        else:
-            logger.error("Failed to generate TTS file")
-            await user.send("Failed to generate TTS.")
+    # Removed send_tts and send_tts_file as they depended on Discord
 
     async def generate_tts_file(self, text):
         if not ELEVENLABS_API_KEY:

@@ -19,7 +19,7 @@ from config import (
     DEFAULT_SD_MODEL
 )
 from characters import characters
-import discord
+from characters import characters
 
 logger = logging.getLogger(__name__)
 
@@ -295,8 +295,5 @@ Example: "A woman is standing by the window looking wistful and sad while touchi
                 else:
                     return None
 
-    async def send_image(self, ctx, image_data):
-        image_path = await self.save_image(image_data)
-        with open(image_path, "rb") as f:
-            await ctx.send(file=discord.File(f, os.path.basename(image_path)))
-        return image_path
+    # Removed send_image as it depended on Discord ctx
+    # The server will handle sending the file path or data back to the client

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Dreams</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Background Layer -->
+        <div id="background-layer"></div>
+        
+        <!-- Main Container -->
+        <div class="container">
+            <!-- Header -->
+            <header>
+                <div class="logo">Discord Dreams</div>
+                <div class="controls">
+                    <button id="settings-btn" class="icon-btn">⚙️</button>
+                </div>
+            </header>
+
+            <!-- Chat Area -->
+            <div id="chat-container">
+                <div id="messages">
+                    <!-- Messages will be injected here -->
+                    <div class="message system">
+                        <div class="content">Initializing connection...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div id="input-area">
+                <div class="input-wrapper">
+                    <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+                    <button id="send-btn">Send</button>
+                </div>
+                <div class="action-buttons">
+                    <button id="gen-image-btn" class="action-btn">📸 Selfie</button>
+                    <button id="gen-video-btn" class="action-btn">🎥 Video</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>Settings</h2>
+                <div class="form-group">
+                    <label>System Prompt</label>
+                    <textarea id="system-prompt"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Image Prompt</label>
+                    <textarea id="image-prompt"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>TTS URL</label>
+                    <input type="text" id="tts-url">
+                </div>
+                <div class="modal-actions">
+                    <button id="save-settings-btn">Save</button>
+                    <button id="close-settings-btn">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

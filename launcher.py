@@ -306,7 +306,7 @@ class BotLauncher:
         self.char_combo.pack(side="left", padx=5)
         if self.char_combo._values: self.char_combo.set(self.char_combo._values[0])
         
-        self.deploy_btn = ctk.CTkButton(deploy_frame, text="DEPLOY BOT", command=self.deploy_bot, fg_color="#00E676", text_color="black", font=("Segoe UI", 12, "bold"))
+        self.deploy_btn = ctk.CTkButton(deploy_frame, text="LAUNCH APP", command=self.deploy_bot, fg_color="#00E676", text_color="black", font=("Segoe UI", 12, "bold"))
         self.deploy_btn.pack(side="left", padx=20)
         
         # --- Process Monitor Section ---
@@ -480,19 +480,16 @@ class BotLauncher:
             return
             
         try:
-            cmd = [
-                sys.executable, "next.py",
-                "--user", user,
-                "--character", char,
-                "--main-provider", self.main_provider_var.get(),
-                "--main-model", self.main_model_var.get().split(" (")[0],
-                "--media-provider", self.media_provider_var.get(),
-                "--media-model", self.media_model_var.get().split(" (")[0]
-            ]
+            # Open browser
+            import webbrowser
+            webbrowser.open("http://localhost:8000")
             
+            # Use cmd /k to keep window open on error for debugging
             if os.name == 'nt':
+                cmd = ["cmd", "/k", sys.executable, "server.py"]
                 process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
             else:
+                cmd = [sys.executable, "server.py"]
                 process = subprocess.Popen(cmd, preexec_fn=os.setsid)
                 
             p_info = ProcessInfo(process, user, char)
