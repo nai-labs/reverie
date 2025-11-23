@@ -241,7 +241,15 @@ class BotLauncher:
     def __init__(self, root):
         self.root = root
         self.root.title("Discord Dreams Bot Launcher")
-        self.root.geometry("1000x800")
+        
+        # Center main window
+        window_width = 1000
+        window_height = 800
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         
         self.processes = []
         self.conversation_windows = {}
@@ -599,7 +607,79 @@ class BotLauncher:
         self.root.destroy()
         sys.exit(0)
 
+class SplashScreen:
+    def __init__(self, root, on_complete):
+        self.root = root
+        self.on_complete = on_complete
+        
+        self.window = ctk.CTkToplevel(root)
+        self.window.overrideredirect(True) # Frameless
+        
+        # Default size if image fails
+        width, height = 500, 400
+        
+        # Load Image
+        try:
+            if os.path.exists("dd.png"):
+                image = Image.open("dd.png")
+                width, height = image.size
+                self.photo = ImageTk.PhotoImage(image)
+                
+                # Set window size to image size
+                self.window.geometry(f"{width}x{height}")
+                
+                # Image Label (Background)
+                self.img_label = ctk.CTkLabel(self.window, image=self.photo, text="")
+                self.img_label.place(x=0, y=0, relwidth=1, relheight=1)
+            else:
+                self.window.geometry(f"{width}x{height}")
+                self.window.configure(fg_color="#1a1a1a")
+                ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 32, "bold")).place(relx=0.5, rely=0.4, anchor="center")
+        except Exception as e:
+            print(f"Error loading splash image: {e}")
+            self.window.geometry(f"{width}x{height}")
+            self.window.configure(fg_color="#1a1a1a")
+            ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 32, "bold")).place(relx=0.5, rely=0.4, anchor="center")
+
+        # Center window on screen
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
+
+        # Button (Overlay)
+        self.btn = ctk.CTkButton(
+            self.window, 
+            text="Click to Open Launcher", 
+            font=("Segoe UI", 14, "bold"),
+            fg_color="#00E676", 
+            text_color="black",
+            hover_color="#00C853",
+            command=self.enter_launcher,
+            height=40,
+            bg_color="transparent",
+            background_corner_colors=None # Try to make corners transparent if possible, though CTkButton is rectangular
+        )
+        # Place at bottom center
+        self.btn.place(relx=0.5, rely=0.9, anchor="center")
+        
+        self.window.lift()
+        self.window.focus_force()
+
+    def enter_launcher(self):
+        self.window.destroy()
+        self.on_complete()
+
+def launch_main_app():
+    app.deiconify() # Show main window
+    global launcher
+    launcher = BotLauncher(app)
+
 if __name__ == "__main__":
     app = ctk.CTk()
-    launcher = BotLauncher(app)
+    app.withdraw() # Hide main window initially
+    
+    splash = SplashScreen(app, on_complete=launch_main_app)
+    
     app.mainloop()
