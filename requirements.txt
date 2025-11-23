@@ -29,3 +29,7 @@ pydub==0.25.1
 
 # TTS (Zonos)
 gradio_client==0.7.1  # Required for Zonos TTS
+
+# UI/UX
+colorama==0.4.6
+customtkinter==5.2.1

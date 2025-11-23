@@ -171,6 +171,32 @@ class APIManager:
             return None # Indicate error
     # --- NEW METHOD END ---
 
+    async def generate_voice_direction(self, text):
+        """
+        Enhances text with bracketed voice direction tags for ElevenLabs v3.
+        Uses the currently selected main LLM.
+        """
+        logger.info("APIManager: Generating voice direction tags...")
+        
+        system_prompt = (
+            "You are an expert voice director. Your task is to rewrite the following message for a text-to-speech model. "
+            "Add bracketed voice direction tags (e.g., [laughter], [sighs], [whispering], [shouting], [clears throat], [giggles]) "
+            "to express the emotion and delivery style. "
+            "Do not change the core message words significantly, just add the performance tags where appropriate. "
+            "Keep it natural."
+        )
+        
+        # Reuse the existing generate_response logic but with a specific system prompt
+        # We create a temporary conversation context
+        temp_conversation = [] 
+        
+        # We can use the generic generate_response method
+        response = await self.generate_response(text, temp_conversation, system_prompt)
+        
+        # Clean up response if needed (sometimes models add "Here is the rewritten text:")
+        # For now, assume the model follows instructions well enough or we take the whole response.
+        return response
+
     def get_current_llm(self):
         return self.current_llm
 

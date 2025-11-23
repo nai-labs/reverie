@@ -10,6 +10,7 @@ import argparse
 from typing import Optional
 from datetime import datetime
 from users import get_user_id, list_users
+from colorama import Fore
 
 # Character validation function
 def validate_character(name: str) -> bool:
@@ -627,6 +628,46 @@ async def speak(ctx):
         logger.error(f"Error in speak command: {str(e)}", exc_info=True)
         user = await bot.fetch_user(ctx.bot.args.discord_id)
         await user.send(f"```❌ Error in speak command: {str(e)}```")
+
+@bot.command()
+async def say3(ctx, *, text: Optional[str] = None):
+    """Generate a voicenote using ElevenLabs v3 (supports [laughter], etc.)"""
+    if not text:
+        # Get last message from conversation history
+        last_message = ctx.bot.conversation_manager.get_last_message()
+        if last_message:
+            text = last_message
+        else:
+            user = await bot.fetch_user(ctx.bot.args.discord_id)
+            await user.send("```No preceding message found in the conversation.```")
+            return
+
+    user = await bot.fetch_user(ctx.bot.args.discord_id)
+    await user.send(f"Enhancing and generating v3 TTS for: {text}")
+    StatusLogger.print_status("Enhancing text with voice direction...", Fore.CYAN)
+    
+    # Auto-enhance the text with voice direction tags
+    enhanced_text = await ctx.bot.api_manager.generate_voice_direction(text)
+    
+    if enhanced_text:
+        StatusLogger.print_info(f"Enhanced text: {enhanced_text}")
+        await user.send(f"Enhanced text: {enhanced_text}")
+        text = enhanced_text # Use the enhanced text
+    else:
+        StatusLogger.print_warning("Failed to enhance text, using original.")
+    
+    StatusLogger.print_status("Generating v3 TTS...", Fore.MAGENTA)
+    
+    # Use the new v3 generation method
+    audio_path = await ctx.bot.tts_manager.generate_v3_tts(text)
+    
+    if audio_path:
+        await user.send(f"Generated v3 TTS file: {os.path.basename(audio_path)}", file=discord.File(audio_path))
+        ctx.bot.conversation_manager.set_last_audio_path(audio_path)
+        StatusLogger.print_success("v3 TTS generated and sent!")
+    else:
+        await user.send("Failed to generate v3 TTS.")
+        StatusLogger.print_error("Failed to generate v3 TTS.")
 
 # Image and Video Commands
 
