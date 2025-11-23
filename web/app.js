@@ -81,11 +81,69 @@ function addMessage(sender, content, type, audioFile = null) {
                 </audio>
             </div>
         `;
+    } else if (type === 'bot') {
+        // Add generate audio button for bot messages
+        // We use a unique ID for the button to replace it later
+        const btnId = `tts-btn-${Date.now()}`;
+        // Store the text content in a data attribute (safe encoding)
+        // encodeURIComponent doesn't escape single quotes, so we must do it manually to avoid breaking the onclick attribute
+        const safeText = encodeURIComponent(content).replace(/'/g, "%27");
+
+        html += `
+            <div class="message-actions">
+                <button id="${btnId}" class="icon-btn" onclick="generateAudio('${btnId}', '${safeText}')" title="Generate Audio">
+                    🔊
+                </button>
+            </div>
+        `;
     }
 
     msgDiv.innerHTML = html;
     messagesDiv.appendChild(msgDiv);
     scrollToBottom();
+}
+
+async function generateAudio(btnId, encodedText) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+
+    const text = decodeURIComponent(encodedText);
+
+    // Show loading state
+    btn.innerHTML = '⏳';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/generate/tts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+
+        if (!response.ok) throw new Error('TTS generation failed');
+
+        const data = await response.json();
+
+        // Replace button with audio player
+        const container = btn.parentElement;
+        container.innerHTML = `
+            <div class="audio-player">
+                <audio controls autoplay>
+                    <source src="${data.tts_url}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
+            </div>
+        `;
+
+    } catch (error) {
+        console.error('TTS failed:', error);
+        btn.innerHTML = '⚠️';
+        btn.title = 'Failed to generate audio';
+        setTimeout(() => {
+            btn.innerHTML = '🔊';
+            btn.disabled = false;
+        }, 2000);
+    }
 }
 
 function addSystemMessage(text) {

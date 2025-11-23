@@ -140,51 +140,44 @@ async def chat(request: ChatRequest):
     if not response_text:
         raise HTTPException(status_code=500, detail="Failed to generate response")
         
-    # 3. Save bot message
+    # 4. Save bot message
     state.conversation_manager.add_assistant_response(response_text)
-    
-    # 4. Generate TTS (if enabled/configured)
-    tts_file = None
-    if state.tts_manager:
-        tts_url = characters[state.character_name].get("tts_url")
-        if tts_url:
-            # Use voice direction logic to get brackets
-            # We pass the raw response text. The manager will rewrite it with brackets.
-            # We can optionally pass narration if we had it separately, but here we just pass the text.
-            # Actually, generate_voice_direction expects (text, narration=None).
-            # Since we don't have separate narration easily available here (it's mixed in response_text),
-            # we can just pass response_text.
-            
-            # However, response_text might already contain *actions*.
-            # The prompt for generate_voice_direction expects "DIALOGUE".
-            # If the bot output is "*laughs* Hello there", we should probably pass "Hello there" as dialogue 
-            # and "*laughs*" as narration?
-            # Or just pass the whole thing and let the LLM figure it out?
-            # The prompt says "Rewrite the DIALOGUE... Use provided NARRATION/CONTEXT".
-            
-            # Let's try to split it roughly.
-            # But simpler: The user wants the "contextual" behavior.
-            # The old bot likely took the text and added brackets.
-            # Let's call generate_voice_direction with the full text.
-            
-            try:
-                voice_directed_text = await state.api_manager.generate_voice_direction(response_text)
-                
-                if voice_directed_text:
-                    tts_path = await state.tts_manager.generate_v3_tts(voice_directed_text)
-                    if tts_path:
-                        state.conversation_manager.set_last_audio_path(tts_path)
-                        # Return full relative path for URL
-                        relative_path = os.path.relpath(tts_path, start=os.getcwd())
-                        tts_file = "/" + relative_path.replace("\\", "/")
-            except Exception as e:
-                logger.error(f"TTS generation failed: {e}")
     
     return {
         "response": response_text,
-        "history": history + [{"role": "assistant", "content": response_text}],
-        "tts_url": tts_file
+        "history": history + [{"role": "assistant", "content": response_text}]
     }
+
+class TTSRequest(BaseModel):
+    text: str
+
+@app.post("/api/generate/tts")
+async def generate_tts(request: TTSRequest):
+    if not state.tts_manager:
+        raise HTTPException(status_code=400, detail="TTS not initialized")
+        
+    text = request.text
+    tts_file = None
+    
+    try:
+        # Use voice direction logic
+        voice_directed_text = await state.api_manager.generate_voice_direction(text)
+        
+        if voice_directed_text:
+            tts_path = await state.tts_manager.generate_v3_tts(voice_directed_text)
+            if tts_path:
+                state.conversation_manager.set_last_audio_path(tts_path)
+                # Return full relative path for URL
+                relative_path = os.path.relpath(tts_path, start=os.getcwd())
+                tts_file = "/" + relative_path.replace("\\", "/")
+    except Exception as e:
+        logger.error(f"TTS generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"TTS generation failed: {e}")
+        
+    if not tts_file:
+         raise HTTPException(status_code=500, detail="Failed to generate TTS")
+         
+    return {"tts_url": tts_file}
 
 @app.post("/api/generate/image")
 async def generate_image():
