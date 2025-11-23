@@ -151,3 +151,17 @@ cython_debug/
 
 # Output folder
 output/
+
+# Local database
+discord_dreams.db
+
+# Backup files
+characters copy.py
+*.bak
+
+# Local settings and logs
+user_settings.json
+verify_log.txt
+
+# Binaries
+lsd.exe

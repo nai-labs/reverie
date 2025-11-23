@@ -63,12 +63,16 @@ class ReplicateManager:
         # Omni-Human model
         self.omni_human_model = "bytedance/omni-human"
 
+        # Wan S2V model
+        self.wan_s2v_model = "wan-video/wan-2.2-s2v"
+
         # Instantiate the replicate client
         # The client automatically uses the REPLICATE_API_TOKEN environment variable
         self.replicate_client = replicate.Client(api_token=self.token)
 
     async def _poll_prediction(self, session, prediction_id, headers):
         """Helper method to poll a Replicate prediction until completion."""
+        last_log_line = ""
         while True:
             await asyncio.sleep(API_POLL_INTERVAL)
             async with session.get(f"https://api.replicate.com/v1/predictions/{prediction_id}", 
@@ -79,6 +83,19 @@ class ReplicateManager:
                 
                 status_data = await status_response.json()
                 status = status_data.get('status')
+                
+                # Check for logs to print progress
+                logs = status_data.get('logs', '')
+                if logs:
+                    current_log_lines = logs.strip().split('\n')
+                    if current_log_lines:
+                        new_last_line = current_log_lines[-1]
+                        if new_last_line != last_log_line:
+                            # Print progress if it looks like a progress bar or percentage
+                            if '%' in new_last_line or 'it/s' in new_last_line or 'steps' in new_last_line.lower():
+                                print(f"Progress: {new_last_line.strip()}")
+                            last_log_line = new_last_line
+
                 logger.debug(f"Prediction status: {status}")
                 
                 if status == 'succeeded':
@@ -439,8 +456,67 @@ class ReplicateManager:
         except FileNotFoundError as e:
             logger.error(f"File not found for Omni-Human video generation: {e}")
             return None
-        except Exception as e:
             logger.error(f"Unexpected error during Omni-Human video generation: {e}", exc_info=True)
+            return None
+
+    async def generate_wan_s2v_video(self, image_path, audio_path, prompt):
+        """Generates a video using the WAN S2V model via the Replicate API with progress updates."""
+        logger.info(f"Generating WAN S2V video with image: {image_path}, audio: {audio_path}, and prompt: '{prompt}'")
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    'Authorization': f'Token {self.token}',
+                    'Content-Type': 'application/json'
+                }
+                
+                # Convert files to base64
+                with open(image_path, "rb") as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
+                with open(audio_path, "rb") as f:
+                    audio_data = base64.b64encode(f.read()).decode('utf-8')
+
+                data = {
+                    'version': self.wan_s2v_model.split(':')[1] if ':' in self.wan_s2v_model else None, # Handle if version is in string
+                    # For models without explicit version in string, we might need to fetch it or use the owner/name format
+                    # Replicate API usually prefers version hash for predictions, but some endpoints accept model name
+                    # Let's try using the model name in the URL for creating prediction if version is missing
+                }
+                
+                # Construct payload
+                payload = {
+                    "input": {
+                        "image": f"data:image/jpeg;base64,{image_data}", # Assuming JPEG/PNG
+                        "audio": f"data:audio/wav;base64,{audio_data}",   # Assuming WAV
+                        "prompt": prompt
+                    }
+                }
+
+                # If we don't have a version hash, we should probably fetch it or use the deployments endpoint
+                # But wait, self.wan_s2v_model is "wan-video/wan-2.2-s2v"
+                # We can use the replicate client to get the version, or just use the replicate client's create method which handles this?
+                # Actually, replicate client's predictions.create is easier but it's synchronous? No, we can use asyncio.to_thread
+                # But we want to poll manually.
+                
+                # Let's get the latest version first using our existing get_model_info or just hardcode if we knew it.
+                # Better: Use the replicate client to create the prediction, then poll manually using the ID.
+                
+                prediction = await asyncio.to_thread(
+                    self.replicate_client.predictions.create,
+                    version=self.replicate_client.models.get("wan-video/wan-2.2-s2v").latest_version,
+                    input={
+                        "image": open(image_path, "rb"),
+                        "audio": open(audio_path, "rb"),
+                        "prompt": prompt
+                    }
+                )
+                
+                logger.info(f"WAN S2V prediction created with ID: {prediction.id}")
+                
+                # Poll for completion using our helper
+                return await self._poll_prediction(session, prediction.id, headers)
+
+        except Exception as e:
+            logger.error(f"Error in generate_wan_s2v_video: {str(e)}", exc_info=True)
             return None
 
     async def get_model_info(self, model_name=None):

@@ -183,50 +183,53 @@ class ImageManager:
             for i, msg in enumerate(recent_messages, 1):
                 logger.info(f"\nMessage {i} ({msg['role']}):\n{msg['content'][:200]}...")
 
-            # Simple prompt asking the LLM to describe the character's current action
-            system_prompt_for_action = """Analyze the last few messages of the conversation provided below. Based ONLY on the conversation context, describe the character's most likely current physical action and location in a very short phrase suitable for an image-to-video generation model.
+            # Detailed prompt asking the LLM to describe the character's action and emotion
+            system_prompt_for_action = """Analyze the last few messages of the conversation provided below. Based on the conversation context, describe the character's current action, facial expression, and emotional state for a video generation prompt.
 
-Focus on a single, simple action. Examples: 'dancing in her room', 'sitting on the couch', 'walking outside', 'talking on the phone'.
+Focus on:
+1. The physical action (e.g., sitting, walking, laughing).
+2. The facial expression and emotion (e.g., smiling warmly, looking concerned, laughing uncontrollably, crying).
+3. Any subtle movements (e.g., tilting head, hand gestures).
 
 Conversation Context:
 {context}
 
-Output ONLY the short action phrase."""
+Output a single descriptive sentence starting with "A woman is...".
+Example: "A woman is sitting on a couch laughing hysterically with her head thrown back."
+Example: "A woman is standing by the window looking wistful and sad while touching the glass."
+"""
 
             prompt_content = system_prompt_for_action.format(context=combined_context)
 
         else:
             # Default prompt if no conversation history
-            # Default prompt if no conversation history
-            # Use a simple default action if no context
-            prompt_content = "standing still"
-            system_prompt_for_action = "Output the phrase 'standing still'." # Ensure LLM just outputs this
+            prompt_content = "A woman is standing still looking at the camera."
+            system_prompt_for_action = "Output the phrase 'A woman is standing still looking at the camera.'."
 
         # Use the APIManager's media LLM generation method
         try:
             action_prompt = await self.api_manager.generate_media_llm_response(
                 system_prompt=system_prompt_for_action,
                 user_prompt=prompt_content, # Pass the context-based prompt here
-                max_tokens=30,
-                temperature=0.3
+                max_tokens=100,
+                temperature=0.7
             )
 
             if action_prompt:
                 # Basic validation/cleanup
-                action_prompt = re.sub(r'[^\w\s]', '', action_prompt) # Remove punctuation
-                action_prompt = action_prompt.lower()
-                # Prepend character description (optional, but might help WAN)
-                # ethnicity = "asian woman" # Simplified, or extract like other prompts
-                # final_prompt = f"{ethnicity} {action_prompt}"
-                final_prompt = f"A woman is {action_prompt}" # Simple format based on WAN example
+                final_prompt = action_prompt.strip()
+                # Ensure it starts with "A woman is" if the LLM messed up, though the prompt asks for it.
+                if not final_prompt.lower().startswith("a woman"):
+                     final_prompt = f"A woman is {final_prompt}"
+                
                 logger.info(f"\nGenerated WAN video prompt: {final_prompt}")
                 return final_prompt
             else:
                 logger.error(f"Error generating WAN prompt: Media LLM returned None")
-                return "A woman is talking" # Fallback prompt
+                return "A woman is talking expressively" # Fallback prompt
         except Exception as e:
             logger.error(f"Exception generating WAN prompt: {e}", exc_info=True)
-            return "A woman is talking" # Fallback prompt
+            return "A woman is talking expressively" # Fallback prompt
     # --- NEW FUNCTION END ---
 
     # This is the original generate_video_prompt function

@@ -172,6 +172,7 @@ async def on_ready():
 # 🎙️ Core
 {COMMAND_PREFIX}say  - Generate a voicenote using ElevenLabs
 {COMMAND_PREFIX}pic  - Generate an image based on conversation
+{COMMAND_PREFIX}video - Generate a video from last pic + audio (Wan S2V)
 
 # 🛠️ Conversation
 {COMMAND_PREFIX}delete       - Delete the last message
@@ -472,6 +473,60 @@ async def pic(ctx):
     else:
         user = await bot.fetch_user(ctx.bot.args.discord_id)
         await user.send("Failed to generate selfie image.")
+
+@bot.command()
+async def video(ctx):
+    """Generate a video using Wan S2V (requires !pic and !say first)."""
+    if not ctx.bot.conversation_manager or not ctx.bot.replicate_manager:
+        user = await bot.fetch_user(ctx.bot.args.discord_id)
+        await user.send("Bot is not fully initialized. Please try again later.")
+        return
+
+    # Get last audio and selfie paths
+    audio_path = ctx.bot.conversation_manager.get_last_audio_file()
+    selfie_path = ctx.bot.conversation_manager.get_last_selfie_path()
+
+    if not audio_path or not selfie_path:
+        user = await bot.fetch_user(ctx.bot.args.discord_id)
+        await user.send("Need both recent audio and selfie. Generate them first using !say and !pic commands.")
+        return
+
+    user = await bot.fetch_user(ctx.bot.args.discord_id)
+    await user.send("Generating video with Wan S2V... This may take a while.")
+
+    try:
+        # Generate prompt using ImageManager (reusing the wan prompt generator)
+        prompt = await ctx.bot.image_manager.generate_wan_video_prompt(ctx.bot.conversation_manager.get_conversation())
+        
+        # Generate the video using ReplicateManager
+        video_url = await ctx.bot.replicate_manager.generate_wan_s2v_video(selfie_path, audio_path, prompt)
+
+        if not video_url:
+            await user.send("Failed to generate video.")
+            return
+
+        # Download and send the video
+        await user.send("Downloading generated video...")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(video_url) as resp:
+                if resp.status == 200:
+                    video_data = await resp.read()
+                    # Save the video
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    video_filename = f"wan_s2v_video_{timestamp}.mp4"
+                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, video_filename)
+                    with open(video_path, "wb") as f:
+                        f.write(video_data)
+                    logger.info(f"Wan S2V video saved to: {video_path}")
+                    # Send the video file
+                    await user.send(file=discord.File(video_path))
+                else:
+                    logger.error(f"Failed to download video. Status: {resp.status}, URL: {video_url}")
+                    await user.send(f"Failed to download the generated video (Status: {resp.status}).")
+
+    except Exception as e:
+        logger.error(f"Error in !video command: {e}", exc_info=True)
+        await user.send(f"An unexpected error occurred during the !video command: {e}")
 
 # Replicate Manager Commands
 
