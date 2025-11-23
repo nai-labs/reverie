@@ -1,0 +1,38 @@
+2025-11-22 22:39:03,899 - DEBUG - Using proactor: IocpProactor
+2025-11-22 22:39:03,901 - INFO - APIManager: Generating response using LLM: anthropic
+2025-11-22 22:39:03,901 - DEBUG - Anthropic API Request Payload: {
+  "model": "claude-3-5-sonnet-20241022",
+  "system": "system",
+  "max_tokens": 2048,
+  "temperature": 0.7
+}
+2025-11-22 22:39:03,901 - DEBUG - Number of messages in conversation: 0
+2025-11-22 22:39:03,901 - DEBUG - Number of messages sent to API: 1
+2025-11-22 22:39:03,901 - INFO - APIManager: Generating response using LLM: openrouter
+2025-11-22 22:39:03,901 - DEBUG - OpenRouter Request - Model: deepseek/deepseek-r1
+2025-11-22 22:39:03,901 - DEBUG - OpenRouter Request - Number of messages: 2
+Testing Network Error Handling...
+
+--- Anthropic ---
+DEBUG: Falling through to default return
+Response: I apologize, but I encountered an error while processing your request.
+FAILURE: Anthropic network error NOT handled.
+
+--- OpenRouter ---
+Response: None
+Traceback (most recent call last):
+  File "C:\AI\discord-dreams\verify_error_handling.py", line 65, in <module>
+    asyncio.run(test_network_error())
+  File "C:\Users\Gus Halwani\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus Halwani\AppData\Local\Programs\Python\Python312\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Gus Halwani\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "C:\AI\discord-dreams\verify_error_handling.py", line 49, in test_network_error
+    if "trouble connecting" in response:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: argument of type 'NoneType' is not iterable

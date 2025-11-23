@@ -1,13 +1,15 @@
 import asyncio
 import os
+import logging
 from dotenv import load_dotenv
-load_dotenv()
 import aiohttp
 import base64
-import replicate # Import the replicate library
-import logging # Added logging
+import replicate
+from config import API_POLL_INTERVAL, DEFAULT_VIDEO_DURATION
 
-logger = logging.getLogger(__name__) # Added logger
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 class ReplicateManager:
     def __init__(self):
@@ -20,8 +22,8 @@ class ReplicateManager:
         if not self.token.startswith('r8_'):
             raise ValueError("REPLICATE_API_TOKEN must start with 'r8_'")
             
-        print(f"Initializing Replicate manager with token starting with: {self.token[:10]}...")
-        print(f"Full token length: {len(self.token)} characters")
+        logger.info(f"Initializing Replicate manager with token starting with: {self.token[:10]}...")
+        logger.debug(f"Full token length: {len(self.token)} characters")
         # SadTalker model
         self.model = "cjwbw/sadtalker"
         self.version = "a519cc0cfebaaeade068b23899165a11ec76aaa1d2b313d40d214f204ec957a3"
@@ -62,9 +64,32 @@ class ReplicateManager:
         # The client automatically uses the REPLICATE_API_TOKEN environment variable
         self.replicate_client = replicate.Client(api_token=self.token)
 
+    async def _poll_prediction(self, session, prediction_id, headers):
+        """Helper method to poll a Replicate prediction until completion."""
+        while True:
+            await asyncio.sleep(API_POLL_INTERVAL)
+            async with session.get(f"https://api.replicate.com/v1/predictions/{prediction_id}", 
+                                 headers=headers) as status_response:
+                if status_response.status != 200:
+                    logger.error(f"Error checking status: {await status_response.text()}")
+                    return None
+                
+                status_data = await status_response.json()
+                status = status_data.get('status')
+                logger.debug(f"Prediction status: {status}")
+                
+                if status == 'succeeded':
+                    return status_data.get('output')
+                elif status == 'failed':
+                    logger.error(f"Prediction failed: {status_data.get('error')}")
+                    return None
+                elif status not in ['starting', 'processing']:
+                    logger.warning(f"Unexpected status: {status}")
+                    return None
+
     async def generate_image(self, prompt, size="1024x1536"):
         try:
-            print(f"Creating image prediction with Replicate...")
+            logger.info(f"Creating image prediction with Replicate...")
             # Use aiohttp for direct API access
             async with aiohttp.ClientSession() as session:
                 headers = {
@@ -83,42 +108,26 @@ class ReplicateManager:
                                      json=data) as response:
                     if response.status != 201:
                         error_text = await response.text()
-                        print(f"Error response: {error_text}")
+                        logger.error(f"Error response: {error_text}")
                         return None
                     
                     prediction = await response.json()
-                    print(f"Prediction created with ID: {prediction.get('id')}")
+                    prediction_id = prediction.get('id')
+                    logger.debug(f"Prediction created with ID: {prediction_id}")
 
                     # Poll for completion
-                    while True:
-                        await asyncio.sleep(1)
-                        async with session.get(f"https://api.replicate.com/v1/predictions/{prediction['id']}", 
-                                             headers=headers) as status_response:
-                            if status_response.status != 200:
-                                print(f"Error checking status: {await status_response.text()}")
-                                return None
-                            
-                            status_data = await status_response.json()
-                            print(f"Prediction status: {status_data.get('status')}")
-                            
-                            if status_data.get('status') == 'succeeded':
-                                output = status_data.get('output', [])
-                                return output[0] if isinstance(output, list) else output
-                            elif status_data.get('status') == 'failed':
-                                print(f"Prediction failed: {status_data.get('error')}")
-                                return None
-                            elif status_data.get('status') not in ['starting', 'processing']:
-                                print(f"Unexpected status: {status_data.get('status')}")
-                                return None
+                    output = await self._poll_prediction(session, prediction_id, headers)
+                    if output:
+                        return output[0] if isinstance(output, list) else output
+                    return None
 
         except Exception as e:
-            print(f"Error in generate_image: {str(e)}")
-            print(f"Error type: {type(e)}")
+            logger.error(f"Error in generate_image: {str(e)}", exc_info=True)
             return None
 
     async def generate_video_retalking(self, face_path, audio_path):
         try:
-            print(f"Creating video retalking prediction...")
+            logger.info(f"Creating video retalking prediction...")
             async with aiohttp.ClientSession() as session:
                 headers = {
                     'Authorization': f'Token {self.token}',
@@ -142,36 +151,18 @@ class ReplicateManager:
                                      json=data) as response:
                     if response.status != 201:
                         error_text = await response.text()
-                        print(f"Error response: {error_text}")
+                        logger.error(f"Error response: {error_text}")
                         return None
                     
                     prediction = await response.json()
-                    print(f"Prediction created with ID: {prediction.get('id')}")
+                    prediction_id = prediction.get('id')
+                    logger.debug(f"Prediction created with ID: {prediction_id}")
 
                     # Poll for completion
-                    while True:
-                        await asyncio.sleep(1)
-                        async with session.get(f"https://api.replicate.com/v1/predictions/{prediction['id']}", 
-                                             headers=headers) as status_response:
-                            if status_response.status != 200:
-                                print(f"Error checking status: {await status_response.text()}")
-                                return None
-                            
-                            status_data = await status_response.json()
-                            print(f"Prediction status: {status_data.get('status')}")
-                            
-                            if status_data.get('status') == 'succeeded':
-                                return status_data.get('output')
-                            elif status_data.get('status') == 'failed':
-                                print(f"Prediction failed: {status_data.get('error')}")
-                                return None
-                            elif status_data.get('status') not in ['starting', 'processing']:
-                                print(f"Unexpected status: {status_data.get('status')}")
-                                return None
+                    return await self._poll_prediction(session, prediction_id, headers)
 
         except Exception as e:
-            print(f"Error in generate_video_retalking: {str(e)}")
-            print(f"Error type: {type(e)}")
+            logger.error(f"Error in generate_video_retalking: {str(e)}", exc_info=True)
             return None
     
         
@@ -200,17 +191,12 @@ class ReplicateManager:
             size_of_image = size_of_image if size_of_image is not None else self.size_of_image
             expression_scale = expression_scale if expression_scale is not None else self.expression_scale
 
-            print(f"Debug - Initiating API call with parameters:")
-            print(f"  driven_audio: {driven_audio}")
-            print(f"  source_image: {source_image}")
-            print(f"  facerender: {facerender}")
-            print(f"  pose_style: {pose_style}")
-            print(f"  preprocess: {preprocess}")
-            print(f"  still_mode: {still_mode}")
-            print(f"  use_enhancer: {use_enhancer}")
-            print(f"  use_eyeblink: {use_eyeblink}")
-            print(f"  size_of_image: {size_of_image}")
-            print(f"  expression_scale: {expression_scale}")
+            logger.debug(f"Initiating API call with parameters: "
+                        f"driven_audio={driven_audio}, source_image={source_image}, "
+                        f"facerender={facerender}, pose_style={pose_style}, "
+                        f"preprocess={preprocess}, still_mode={still_mode}, "
+                        f"use_enhancer={use_enhancer}, use_eyeblink={use_eyeblink}, "
+                        f"size_of_image={size_of_image}, expression_scale={expression_scale}")
 
             async with aiohttp.ClientSession() as session:
                 headers = {
@@ -237,36 +223,18 @@ class ReplicateManager:
                                      json=data) as response:
                     if response.status != 201:
                         error_text = await response.text()
-                        print(f"Error response: {error_text}")
+                        logger.error(f"Error response: {error_text}")
                         return None
                     
                     prediction = await response.json()
-                    print(f"Prediction created with ID: {prediction.get('id')}")
+                    prediction_id = prediction.get('id')
+                    logger.debug(f"Prediction created with ID: {prediction_id}")
 
                     # Poll for completion
-                    while True:
-                        await asyncio.sleep(1)
-                        async with session.get(f"https://api.replicate.com/v1/predictions/{prediction['id']}", 
-                                             headers=headers) as status_response:
-                            if status_response.status != 200:
-                                print(f"Error checking status: {await status_response.text()}")
-                                return None
-                            
-                            status_data = await status_response.json()
-                            print(f"Prediction status: {status_data.get('status')}")
-                            
-                            if status_data.get('status') == 'succeeded':
-                                return status_data.get('output')
-                            elif status_data.get('status') == 'failed':
-                                print(f"Prediction failed: {status_data.get('error')}")
-                                return None
-                            elif status_data.get('status') not in ['starting', 'processing']:
-                                print(f"Unexpected status: {status_data.get('status')}")
-                                return None
+                    return await self._poll_prediction(session, prediction_id, headers)
 
         except Exception as e:
-            print(f"Error in generate_talking_face: {str(e)}")
-            print(f"Error type: {type(e)}")
+            logger.error(f"Error in generate_talking_face: {str(e)}", exc_info=True)
         
         return None
 
@@ -337,18 +305,17 @@ class ReplicateManager:
                 async with session.get('https://api.replicate.com/v1/account', headers=headers) as response:
                     if response.status == 200:
                         account_data = await response.json()
-                        print(f"Authentication successful. Account: {account_data.get('username')}")
+                        logger.info(f"Authentication successful. Account: {account_data.get('username')}")
                         return True
                     else:
                         error_text = await response.text()
-                        print(f"Authentication failed with status {response.status}: {error_text}")
+                        logger.error(f"Authentication failed with status {response.status}: {error_text}")
                         return False
         except Exception as e:
-            print(f"Authentication test failed: {str(e)}")
-            print(f"Error type: {type(e)}")
+            logger.error(f"Authentication test failed: {str(e)}", exc_info=True)
             return False
 
-    async def generate_kling_video(self, image_path, prompt, duration=10):
+    async def generate_kling_video(self, image_path, prompt, duration=DEFAULT_VIDEO_DURATION):
         """Generate a video from an image using the Kling model."""
         logger.info(f"Generating Kling video with image: {image_path} and prompt: '{prompt}'")
         try:
@@ -378,7 +345,7 @@ class ReplicateManager:
     async def apply_latentsync(self, video_url, audio_path):
         """Apply lip sync to a video using the LatentSync model."""
         try:
-            print(f"Creating LatentSync prediction...")
+            logger.info(f"Creating LatentSync prediction...")
             async with aiohttp.ClientSession() as session:
                 headers = {
                     'Authorization': f'Token {self.token}',
@@ -402,37 +369,18 @@ class ReplicateManager:
                                      json=data) as response:
                     if response.status != 201:
                         error_text = await response.text()
-                        print(f"Error response: {error_text}")
+                        logger.error(f"Error response: {error_text}")
                         return None
                     
                     prediction = await response.json()
-                    print(f"Prediction created with ID: {prediction.get('id')}")
+                    prediction_id = prediction.get('id')
+                    logger.debug(f"Prediction created with ID: {prediction_id}")
 
                     # Poll for completion
-                    while True:
-                        await asyncio.sleep(1)
-                        async with session.get(f"https://api.replicate.com/v1/predictions/{prediction['id']}", 
-                                             headers=headers) as status_response:
-                            if status_response.status != 200:
-                                print(f"Error checking status: {await status_response.text()}")
-                                return None
-                            
-                            status_data = await status_response.json()
-                            print(f"Prediction status: {status_data.get('status')}")
-                            
-                            if status_data.get('status') == 'succeeded':
-                                output = status_data.get('output')
-                                return output
-                            elif status_data.get('status') == 'failed':
-                                print(f"Prediction failed: {status_data.get('error')}")
-                                return None
-                            elif status_data.get('status') not in ['starting', 'processing']:
-                                print(f"Unexpected status: {status_data.get('status')}")
-                                return None
+                    return await self._poll_prediction(session, prediction_id, headers)
 
         except Exception as e:
-            print(f"Error in apply_latentsync: {str(e)}")
-            print(f"Error type: {type(e)}")
+            logger.error(f"Error in apply_latentsync: {str(e)}", exc_info=True)
             return None
 
     # --- NEW FUNCTION START ---
@@ -481,7 +429,7 @@ class ReplicateManager:
                 async with session.get(f'https://api.replicate.com/v1/models/{model_to_query}', 
                                      headers=headers) as response:
                     if response.status != 200:
-                        print(f"Error getting model info: {await response.text()}")
+                        logger.error(f"Error getting model info: {await response.text()}")
                         return None
                     
                     model_data = await response.json()
@@ -497,6 +445,5 @@ class ReplicateManager:
                         "versions": versions
                     }
         except Exception as e:
-            print(f"Error in get_model_info: {str(e)}")
-            print(f"Error type: {type(e)}")
+            logger.error(f"Error in get_model_info: {str(e)}", exc_info=True)
             return None

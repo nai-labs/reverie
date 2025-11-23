@@ -16,11 +16,15 @@ import threading
 from users import users, list_users
 from characters import characters
 from config import CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL
+from database_manager import DatabaseManager
 class ConversationWindow:
-    def __init__(self, root, process_info, log_file):
+    def __init__(self, root, process_info, session_id, db):
         self.window = tk.Toplevel(root)
         self.window.title(f"{process_info.character} - Conversation with {process_info.user}")
         self.window.geometry("800x600")
+        
+        self.session_id = session_id
+        self.db = db
         
         # Store PhotoImage references to prevent garbage collection
         self.photo_references = []
@@ -78,9 +82,12 @@ class ConversationWindow:
             variable=self.auto_refresh
         ).pack(side=tk.LEFT, padx=5)
         
-        # Store process info and log file
+        # Store process info
         self.process_info = process_info
-        self.log_file = log_file
+        # self.log_file = log_file # No longer needed for reading messages, but maybe for paths?
+        # We can derive output_dir from session_id if needed, or pass it.
+        # For now, let's assume output/session_id/ is the path.
+        self.output_dir = os.path.join("output", session_id)
         
         # Load initial conversation
         self.refresh()
@@ -207,24 +214,18 @@ class ConversationWindow:
     def refresh(self):
         """Refresh the conversation display"""
         try:
-            with open(self.log_file, 'r', encoding='utf-8') as f:
-                content = f.read()
+            # Get history from DB
+            history = self.db.get_history(self.session_id)
             
             # Clear content and photo references
             self.text.delete('1.0', tk.END)
             self.photo_references.clear()
             
-            # Get the output directory path
-            output_dir = os.path.dirname(self.log_file)
-            
-            # Find all messages and TTS files using regex with DOTALL flag
-            pattern = r'\[(.*?)\] \*\*(.*?)\*\*: (.*?)(?=\n\[|$)'
-            tts_pattern = r'Generated TTS file: (tts_response_\d{8}_\d{6}\.mp3)'
-            matches = list(re.finditer(pattern, content, re.DOTALL))
-            
-            for match in matches:
-                timestamp, role, message = match.groups()
-                message = message.strip()  # Remove leading/trailing whitespace
+            for msg in history:
+                timestamp = msg['timestamp']
+                role = msg['sender']
+                message = msg['content']
+                media_path = msg['media_path'] # Not yet used in DB, but good to have
                 
                 # Format timestamp
                 self.text.insert(tk.END, f"[{timestamp}] ", 'timestamp')
@@ -234,47 +235,47 @@ class ConversationWindow:
                     self.text.insert(tk.END, f"{self.process_info.user}: ", 'user')
                     self.format_message_with_italics(message, 'user')
                 else:
-                    # Insert play button if there's a TTS file
+                    # Check for TTS file in message (legacy/current behavior stores it in text)
+                    # Or check output dir for new files?
+                    # For now, keep regex for TTS/Image if they are still in the message text.
+                    # The DB migration kept the message content as is.
+                    
+                    # Regex for TTS
+                    tts_pattern = r'Generated TTS file: (tts_response_\d{8}_\d{6}\.mp3)'
                     tts_matches = re.findall(tts_pattern, message)
                     if tts_matches:
-                        tts_path = os.path.join(output_dir, tts_matches[-1])  # Use the last TTS file
+                        tts_path = os.path.join(self.output_dir, tts_matches[-1])
                         if os.path.exists(tts_path):
-                            # Create unique tag for this play button
                             play_tag = f"play_{timestamp}"
                             self.text.image_create(tk.END, image=self.play_button_img, padx=5)
                             self.text.tag_add(play_tag, f"{self.text.index(tk.END)}-1c")
                             self.text.tag_bind(play_tag, '<Button-1>', 
                                              lambda e, path=tts_path: self.play_audio(path))
-                    
+
                     self.text.insert(tk.END, f"{self.process_info.character}: ", 'bot')
                     self.format_message_with_italics(message, 'bot')
                 
-                # Check for and display any images
-                # Look for "Generated selfie: filename.png" in the message
+                # Check for images in message text
                 if "Generated selfie:" in message:
-                    # Extract filename from message
-                    filename = message.split("Generated selfie:")[1].strip()
-                    
-                    # Look for the exact image file
-                    if filename in os.listdir(output_dir):
-                        img_path = os.path.join(output_dir, filename)
-                        photo = self.load_and_resize_image(img_path)
-                        if photo:
-                            self.text.insert(tk.END, "\n")  # New line for image
-                            image_index = self.text.index(tk.END)
-                            self.text.image_create(tk.END, image=photo)
-                            # Bind click event to the image
-                            tag_name = f"img_{filename}"
-                            self.text.tag_add(tag_name, image_index, self.text.index(tk.END))
-                            self.text.tag_bind(tag_name, '<Button-1>', 
-                                             lambda e, path=img_path: self.on_image_click(e, path))
-                            self.text.insert(tk.END, "\n")  # New line after image
+                    try:
+                        filename = message.split("Generated selfie:")[1].strip()
+                        if filename in os.listdir(self.output_dir):
+                            img_path = os.path.join(self.output_dir, filename)
+                            photo = self.load_and_resize_image(img_path)
+                            if photo:
+                                self.text.insert(tk.END, "\n")
+                                image_index = self.text.index(tk.END)
+                                self.text.image_create(tk.END, image=photo)
+                                tag_name = f"img_{filename}"
+                                self.text.tag_add(tag_name, image_index, self.text.index(tk.END))
+                                self.text.tag_bind(tag_name, '<Button-1>', 
+                                                 lambda e, path=img_path: self.on_image_click(e, path))
+                                self.text.insert(tk.END, "\n")
+                    except IndexError:
+                        pass
                 
-                
-                # Add double newline after each message for spacing
                 self.text.insert(tk.END, "\n\n")
             
-            # Scroll to end
             self.text.see(tk.END)
             
         except Exception as e:
@@ -303,11 +304,12 @@ class BotLauncher:
     def __init__(self, root):
         self.root = root
         self.root.title("Discord Dreams Bot Launcher")
-        self.root.geometry("900x800")  # Reduced height
+        self.root.geometry("900x696")  # Compact single-page layout with extra height
         self.processes = []  # Track running bot processes
         self.selected_pid = None  # Track selected process
         self.conversation_windows = {}  # Track open conversation windows
         self.update_interval = 1000  # Update process list every second
+        self.db = DatabaseManager()
 
         # Apply the 'clam' theme
         style = Style(root)
@@ -320,78 +322,61 @@ class BotLauncher:
         # Set up window close handler
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        # Create canvas for scrolling
-        canvas = tk.Canvas(root)
-        scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
-        
-        # Create main frame with padding
-        main_frame = ttk.Frame(canvas, padding="10")
-        
-        # Configure scrolling
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        
-        # Create window in canvas for main frame
-        canvas.create_window((0, 0), window=main_frame, anchor="nw")
-        
-        # Configure grid weights for root
-        root.grid_rowconfigure(0, weight=1)
-        root.grid_columnconfigure(0, weight=1)
-        
-        # Update scroll region when frame size changes
-        def on_frame_configure(event):
-            canvas.configure(scrollregion=canvas.bbox("all"))
-        main_frame.bind("<Configure>", on_frame_configure)
+        # Create main frame with padding (no canvas/scrollbar needed)
+        main_frame = ttk.Frame(root, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         
         # Configure grid weights
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
+        main_frame.columnconfigure(3, weight=1)
         
-        # User selection
-        ttk.Label(main_frame, text="User:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=(0, 5)) # Added padx, adjusted pady
+        # Top row - User, Character, Deploy Button
+        top_frame = ttk.Frame(main_frame)
+        top_frame.grid(row=0, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        ttk.Label(top_frame, text="User:").pack(side=tk.LEFT, padx=(0, 5))
         self.user_var = tk.StringVar()
-        self.user_combo = ttk.Combobox(main_frame, textvariable=self.user_var, state="readonly")
+        self.user_combo = ttk.Combobox(top_frame, textvariable=self.user_var, state="readonly", width=15)
         self.user_combo["values"] = list_users()
-        self.user_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5, pady=(0, 5)) # Added padx, adjusted pady
+        self.user_combo.pack(side=tk.LEFT, padx=(0, 15))
         self.user_combo.bind("<<ComboboxSelected>>", self.on_user_select)
         
-        # Character selection
-        ttk.Label(main_frame, text="Character:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5) # Added padx
+        ttk.Label(top_frame, text="Character:").pack(side=tk.LEFT, padx=(0, 5))
         self.char_var = tk.StringVar()
-        self.char_combo = ttk.Combobox(main_frame, textvariable=self.char_var, state="readonly")
+        self.char_combo = ttk.Combobox(top_frame, textvariable=self.char_var, state="readonly", width=15)
         self.char_combo["values"] = list(characters.keys())
-        self.char_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=5, pady=5) # Added padx
+        self.char_combo.pack(side=tk.LEFT, padx=(0, 15))
         self.char_combo.bind("<<ComboboxSelected>>", self.on_character_select)
         
-        # LLM Settings frame
-        llm_frame = ttk.LabelFrame(main_frame, text="LLM Settings", padding="10") # Increased padding
-        llm_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10) # Increased pady
+        # Deploy button in top row
+        deploy_style = ttk.Style()
+        deploy_style.configure("Deploy.TButton", font=('TkDefaultFont', 10, 'bold'))
+        ttk.Button(top_frame, text="Deploy Bot", command=self.deploy_bot, style="Deploy.TButton").pack(side=tk.LEFT, padx=10)
+        
+        # LLM Settings frame - side by side
+        llm_frame = ttk.LabelFrame(main_frame, text="LLM Settings", padding="5")
+        llm_frame.grid(row=1, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=5)
+        llm_frame.columnconfigure(0, weight=1)
         llm_frame.columnconfigure(1, weight=1)
         
-        # Main Conversation LLM
-        ttk.Label(llm_frame, text="Main Conversation:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5) # Added padx
+        # Main Conversation LLM (Left Column)
+        main_llm_frame = ttk.Frame(llm_frame)
+        main_llm_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=5)
         
-        # Provider selection
-        provider_frame = ttk.Frame(llm_frame)
-        provider_frame.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5, pady=5) # Added padx
-        provider_frame.columnconfigure(3, weight=1)
-        
-        ttk.Label(provider_frame, text="Provider:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5)) # Keep existing padx
+        ttk.Label(main_llm_frame, text="Main:").pack(side=tk.LEFT, padx=(0, 5))
         self.main_provider_var = tk.StringVar(value="Anthropic")
-        self.main_provider_combo = ttk.Combobox(provider_frame, textvariable=self.main_provider_var, state="readonly", width=15)
+        self.main_provider_combo = ttk.Combobox(main_llm_frame, textvariable=self.main_provider_var, state="readonly", width=12)
         self.main_provider_combo["values"] = ["Anthropic", "OpenRouter", "LMStudio"]
-        self.main_provider_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
+        self.main_provider_combo.pack(side=tk.LEFT, padx=2)
         
-        ttk.Label(provider_frame, text="Model:").grid(row=0, column=2, sticky=tk.W, padx=5)
         self.main_model_var = tk.StringVar()
-        self.main_model_combo = ttk.Combobox(provider_frame, textvariable=self.main_model_var, state="readonly", width=30)
-        self.main_model_combo.grid(row=0, column=3, sticky=(tk.W, tk.E), padx=(0, 5))
+        self.main_model_combo = ttk.Combobox(main_llm_frame, textvariable=self.main_model_var, state="readonly", width=38)
+        self.main_model_combo.pack(side=tk.LEFT, padx=2)
         
         # Set initial main model list
         self.main_model_combo["values"] = [f"{name} ({code})" for name, code in CLAUDE_MODELS.items()]
-        # Find and set the default model
         default_main_model = next((f"{name} ({code})" for name, code in CLAUDE_MODELS.items() 
                                  if name == DEFAULT_CLAUDE_MODEL), None)
         if default_main_model:
@@ -399,27 +384,22 @@ class BotLauncher:
         elif self.main_model_combo["values"]:
             self.main_model_combo.set(self.main_model_combo["values"][0])
         
-        # Media Generation LLM
-        ttk.Label(llm_frame, text="Media Generation:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5) # Added padx
+        # Media Generation LLM (Right Column)
+        media_llm_frame = ttk.Frame(llm_frame)
+        media_llm_frame.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5)
         
-        media_frame = ttk.Frame(llm_frame)
-        media_frame.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=5, pady=5) # Added padx
-        media_frame.columnconfigure(3, weight=1)
-        
-        ttk.Label(media_frame, text="Provider:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5)) # Keep existing padx
+        ttk.Label(media_llm_frame, text="Media:").pack(side=tk.LEFT, padx=(0, 5))
         self.media_provider_var = tk.StringVar(value="OpenRouter")
-        self.media_provider_combo = ttk.Combobox(media_frame, textvariable=self.media_provider_var, state="readonly", width=15)
+        self.media_provider_combo = ttk.Combobox(media_llm_frame, textvariable=self.media_provider_var, state="readonly", width=12)
         self.media_provider_combo["values"] = ["OpenRouter"]
-        self.media_provider_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
+        self.media_provider_combo.pack(side=tk.LEFT, padx=2)
         
-        ttk.Label(media_frame, text="Model:").grid(row=0, column=2, sticky=tk.W, padx=5)
         self.media_model_var = tk.StringVar()
-        self.media_model_combo = ttk.Combobox(media_frame, textvariable=self.media_model_var, state="readonly", width=30)
-        self.media_model_combo.grid(row=0, column=3, sticky=(tk.W, tk.E), padx=(0, 5))
+        self.media_model_combo = ttk.Combobox(media_llm_frame, textvariable=self.media_model_var, state="readonly", width=38)
+        self.media_model_combo.pack(side=tk.LEFT, padx=2)
         
         # Set initial media model list
         self.media_model_combo["values"] = [f"{name} ({code})" for name, code in OPENROUTER_MODELS.items()]
-        # Find and set the default model
         default_media_model = next((f"{name} ({code})" for name, code in OPENROUTER_MODELS.items() 
                                   if name == "cohere/command-r-plus-04-2024"), None)
         if default_media_model:
@@ -432,14 +412,14 @@ class BotLauncher:
         self.media_provider_combo.bind("<<ComboboxSelected>>", self.on_media_provider_select)
         
         # Character parameters frame
-        params_frame = ttk.LabelFrame(main_frame, text="Character Parameters", padding="10") # Increased padding
-        params_frame.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10) # Increased pady
+        params_frame = ttk.LabelFrame(main_frame, text="Character Parameters", padding="5")
+        params_frame.grid(row=2, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=5)
         params_frame.columnconfigure(1, weight=1)
         
         # System Prompt
-        ttk.Label(params_frame, text="System Prompt:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5) # Added padx
-        self.system_prompt = scrolledtext.ScrolledText(params_frame, height=3, width=60, wrap=tk.WORD)
-        self.system_prompt.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5, pady=5) # Added padx
+        ttk.Label(params_frame, text="System Prompt:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        self.system_prompt = scrolledtext.ScrolledText(params_frame, height=1, width=60, wrap=tk.WORD)
+        self.system_prompt.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=5, pady=2)
         
         # Image Prompt
         ttk.Label(params_frame, text="Image Prompt:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5) # Added padx
@@ -483,15 +463,15 @@ class BotLauncher:
         self.style = ttk.Entry(settings_frame, width=10)
         self.style.grid(row=0, column=5, sticky=(tk.W, tk.E), padx=5)
         
-        # Process Monitor frame with reduced height
-        monitor_frame = ttk.LabelFrame(main_frame, text="Process Monitor", padding="10") # Increased padding
-        monitor_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E, tk.N, tk.S), pady=10) # Increased pady
+        # Process Monitor frame - compact
+        monitor_frame = ttk.LabelFrame(main_frame, text="Process Monitor", padding="5")
+        monitor_frame.grid(row=3, column=0, columnspan=4, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5)
         monitor_frame.columnconfigure(0, weight=1)
-        monitor_frame.rowconfigure(0, weight=1)  # Allow treeview to expand
+        monitor_frame.rowconfigure(0, weight=1)
         
-        # Create Treeview for process list with reduced height
+        # Create Treeview for process list - 4 rows
         self.process_tree = ttk.Treeview(monitor_frame, columns=("pid", "user", "character", "status", "start_time", "last_message"), 
-                                       show="headings", height=6)
+                                       show="headings", height=4)
         
         # Configure columns
         self.process_tree.heading("pid", text="PID")
@@ -541,24 +521,19 @@ class BotLauncher:
         ttk.Button(button_frame_left, text="Stop All", command=self.stop_all_bots).pack(side=tk.LEFT, padx=2)
         ttk.Button(button_frame_left, text="Refresh", command=self.update_process_list).pack(side=tk.LEFT, padx=2)
         
-        # Bottom buttons in a more compact layout
+        # Bottom buttons - simplified
         bottom_frame = ttk.Frame(main_frame)
-        bottom_frame.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=10) # Increased pady
+        bottom_frame.grid(row=4, column=0, columnspan=4, sticky=(tk.W, tk.E), pady=5)
         
-        # Configure styles
-        deploy_style = ttk.Style()
-        deploy_style.configure("Deploy.TButton", font=('TkDefaultFont', 10, 'bold'))
+        # Configure shutdown style
         shutdown_style = ttk.Style()
         shutdown_style.configure("Shutdown.TButton", foreground="red")
         
         # Left side - Save Changes
-        ttk.Button(bottom_frame, text="Save Changes", command=self.save_changes).pack(side=tk.LEFT, padx=10, pady=5) # Increased padx
-        
-        # Center - Deploy Bot
-        ttk.Button(bottom_frame, text="Deploy Bot", command=self.deploy_bot, style="Deploy.TButton").pack(side=tk.LEFT, padx=10, pady=5, expand=True) # Increased padx
+        ttk.Button(bottom_frame, text="Save Changes", command=self.save_changes).pack(side=tk.LEFT, padx=5)
         
         # Right side - Shutdown (in red)
-        ttk.Button(bottom_frame, text="Shutdown", command=self.shutdown, style="Shutdown.TButton").pack(side=tk.RIGHT, padx=10, pady=5) # Increased padx
+        ttk.Button(bottom_frame, text="Shutdown", command=self.shutdown, style="Shutdown.TButton").pack(side=tk.RIGHT, padx=5)
         
         # Set initial values if available
         if self.user_combo["values"]:
@@ -823,10 +798,19 @@ class BotLauncher:
                 if os.path.exists(output_dir):
                     subdirs = [d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))]
                     if subdirs:
+                        # This logic assumes the latest session is the relevant one. 
+                        # Ideally we'd match PID or start time, but sticking to legacy behavior for now.
                         latest_dir = max(subdirs, key=lambda d: os.path.getctime(os.path.join(output_dir, d)))
-                        log_file = os.path.join(output_dir, latest_dir, f"{latest_dir}.txt")
-                        if os.path.exists(log_file):
-                            process_info.last_message_time = datetime.fromtimestamp(os.path.getmtime(log_file))
+                        session_id = latest_dir
+                        
+                        last_msg = self.db.get_last_message(session_id)
+                        if last_msg:
+                            # Parse timestamp from DB (format: YYYY-MM-DD HH:MM:SS)
+                            try:
+                                process_info.last_message_time = datetime.strptime(last_msg['timestamp'], "%Y-%m-%d %H:%M:%S")
+                            except ValueError:
+                                # Fallback if timestamp format varies
+                                process_info.last_message_time = datetime.now()
                 
                 # Add to tree
                 item_id = self.process_tree.insert("", "end", values=(
@@ -842,6 +826,35 @@ class BotLauncher:
                 if process_info.process.pid == selected_pid:
                     self.process_tree.selection_set(item_id)
                 
+                # Check for status updates in stdout
+                # This requires non-blocking read which is tricky with subprocess on Windows without threads
+                # For now, we'll rely on the fact that we can't easily read stdout of detached processes
+                # in this simple loop without blocking.
+                # A better approach for a future update would be to have the bot write status to a file or DB.
+                # However, since we are using a simple polling loop, we can try to read the last line of the log file if we had one.
+                # But wait, the requirement was to parse stdout.
+                # Since we launched with creationflags=subprocess.CREATE_NEW_CONSOLE, stdout goes to a new window.
+                # To capture it, we would need to redirect stdout to a pipe, but then we lose the console window.
+                # Given the constraints and the "concise, colored status messages" requirement for the terminal,
+                # the bot is likely running in its own visible terminal.
+                # The launcher can't easily read that terminal's output.
+                # 
+                # ALTERNATIVE: The bot writes the status to the database!
+                # We already have a DB. Let's add a 'status' field to the conversations or a new 'bot_status' table.
+                # OR, simpler for now: The bot writes to a small status file 'status.txt' in the session folder.
+                
+                # Let's check if there's a status file in the session folder
+                if session_id:
+                    status_file = os.path.join("output", session_id, "status.txt")
+                    if os.path.exists(status_file):
+                        try:
+                            with open(status_file, "r") as f:
+                                status_line = f.read().strip()
+                                if status_line:
+                                    process_info.status = status_line
+                        except:
+                            pass
+
             except (psutil.NoSuchProcess, ProcessLookupError):
                 process_info.status = "Stopped"
                 self.processes.remove(process_info)
@@ -863,19 +876,19 @@ class BotLauncher:
                 self.conversation_windows[pid].window.lift()
                 return
             
-            # Find the log file
+            # Find the session ID
             if process_info.last_message_time:  # If there are messages
-                log_file = None
+                session_id = None
                 output_dir = os.path.join("output")
                 if os.path.exists(output_dir):
                     subdirs = [d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))]
                     if subdirs:
                         latest_dir = max(subdirs, key=lambda d: os.path.getctime(os.path.join(output_dir, d)))
-                        log_file = os.path.join(output_dir, latest_dir, f"{latest_dir}.txt")
+                        session_id = latest_dir
                 
-                if log_file and os.path.exists(log_file):
+                if session_id:
                     # Create and store conversation window
-                    window = ConversationWindow(self.root, process_info, log_file)
+                    window = ConversationWindow(self.root, process_info, session_id, self.db)
                     self.conversation_windows[pid] = window
                     
                     # Remove from tracking when window is closed
@@ -930,12 +943,11 @@ class BotLauncher:
 
     def shutdown(self):
         """Shutdown the launcher and all bot processes"""
-        if messagebox.askyesno("Confirm Shutdown", "Are you sure you want to shut down?\nThis will stop all running bots."):
-            try:
-                self.stop_all_bots()
-            finally:
-                self.root.destroy()
-                sys.exit(0)
+        try:
+            self.stop_all_bots()
+        finally:
+            self.root.destroy()
+            sys.exit(0)
 
     def on_closing(self):
         """Handle window closing"""

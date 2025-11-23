@@ -11,7 +11,7 @@ DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 COMMAND_PREFIX = '!'
 
 # Logging configuration
-LOG_LEVEL = logging.INFO # Changed from DEBUG to INFO
+LOG_LEVEL = logging.WARNING  # Only show warnings and errors for cleaner output
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
 # OpenRouter API configuration
@@ -36,18 +36,19 @@ CLAUDE_MODELS = {
 }
 
 OPENROUTER_MODELS = {
-    "thedrummer/valkyrie-49b-v1": "drummer",
-    "anthropic/claude-sonnet-4": "sonnet4",
+    "mistralai/mistral-small-3.2-24b-instruct:free": "mistral-small",
     "deepseek/deepseek-chat-v3-0324": "deep",
+    "z-ai/glm-4.6": "glm",
+    "deepseek/deepseek-chat-v3.1": "deep3.1",
     "deepseek/deepseek-chat-v3-0324:free": "deepfree",
-    "google/gemini-2.5-flash-preview": "FLASH2.5",
-    "google/gemini-2.5-pro-preview": "gempro",
-    "openai/gpt-4.1": "4.1",
+    "meta-llama/llama-4-maverick:free": "maverick-free",
+    "deepseek/deepseek-chat-v3.1:free": "deepfree.1",
+    "moonshotai/kimi-k2-thinking": "kimi-k2-think",
+    "cognitivecomputations/dolphin-mistral-24b-venice-edition:free": "venice-free",
     "x-ai/grok-3-beta": "grok",
     "x-ai/grok-4": "grok4",
-    "cohere/command-r-plus-04-2024": "command-R+",
-    "mistralai/mistral-medium-3": "mixtral-med",
-    "meta-llama/llama-4-maverick:free": "maverick"
+    "mistralai/mistral-medium-3": "mixtral-med"
+   
    
 }
 OPENROUTER_MODEL = "deepseek/deepseek-r1"  
@@ -66,7 +67,7 @@ ANTHROPIC_MODEL = 'claude-3-5-sonnet-20241022'
 ANTHROPIC_MAX_TOKENS = 2048
 
 # LMStudio API configuration
-LMSTUDIO_URL = 'http://localhost:1234/v1/chat/completions'
+LMSTUDIO_URL = os.getenv('LMSTUDIO_URL', 'http://localhost:1234/v1/chat/completions')
 LMSTUDIO_HEADERS = {
     'Content-Type': 'application/json'
 }
@@ -98,8 +99,8 @@ ELEVENLABS_VOICE_SETTINGS = {
 ELEVENLABS_OUTPUT_FORMAT = 'mp3_44100_192'
 
 # Stable Diffusion API configuration
-STABLE_DIFFUSION_URL = 'http://127.0.0.1:7860/sdapi/v1/txt2img'
-INSIGHTFACE_MODEL_PATH = os.getenv("INSIGHTFACE_MODEL_PATH", 'C:/AI/newforge/webui_forge_cu121_torch231/webui/models/insightface/inswapper_128.onnx')
+STABLE_DIFFUSION_URL = os.getenv('STABLE_DIFFUSION_URL', 'http://127.0.0.1:7860/sdapi/v1/txt2img')
+INSIGHTFACE_MODEL_PATH = os.getenv("INSIGHTFACE_MODEL_PATH", './models/insightface/inswapper_128.onnx')
 
 # Replicate API configuration
 REPLICATE_API_TOKEN = os.getenv('REPLICATE_API_TOKEN')
@@ -113,7 +114,29 @@ HEDRA_HEADERS = {
 }
 
 # Zonos configuration
-ZONOS_URL = os.getenv('ZONOS_URL', 'https://52a139f01540aa0a5c.gradio.live')
+ZONOS_URL = os.getenv('ZONOS_URL', 'http://localhost:7860')
+
+# API timeout settings
+API_TIMEOUT = 300  # seconds
+API_POLL_INTERVAL = 1  # seconds for polling prediction status
+
+# Image generation defaults
+IMAGE_WIDTH = 896
+IMAGE_HEIGHT = 1152
+IMAGE_STEPS = 30
+IMAGE_GUIDANCE_SCALE = 7
+IMAGE_SAMPLER = "DPM++ 2M Karras"
+DEFAULT_SD_MODEL = "lustifySDXLNSFW_ggwpV7.safetensors"
+
+# Video generation defaults
+DEFAULT_VIDEO_DURATION = 10  # seconds for Kling videos
+
+# Conversation limits
+MAX_CONVERSATION_HISTORY = 100  # Maximum number of messages to keep in memory
+MESSAGE_CHUNK_SIZE = 2000  # Character limit for Discord messages
+
+# File management
+MAX_FILE_AGE_DAYS = 30  # Days to keep generated files before cleanup
 
 # Import characters after all configurations are set
 from characters import characters

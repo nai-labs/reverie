@@ -15,8 +15,8 @@ class HedraManager:
         self.api_key = HEDRA_API_KEY
 
         if not self.api_key:
-            logger.error("Hedra API key is not set. Please set HEDRA_API_KEY in your .env file.")
-            raise ValueError("Hedra API key is required but not set.")
+            logger.warning("Hedra API key is not set. Hedra functionality will be disabled.")
+            self.api_key = None
 
     async def upload_audio(self, audio_path):
         """Upload audio file to Hedra."""

@@ -1,17 +1,27 @@
 # image_manager.py
 import os
 import re
+import logging
 import aiohttp
 import base64
 import io
-import logging # Added logging
 from PIL import Image
 from datetime import datetime
-from config import STABLE_DIFFUSION_URL, OPENROUTER_KEY, INSIGHTFACE_MODEL_PATH
+from config import (
+    STABLE_DIFFUSION_URL, 
+    OPENROUTER_KEY, 
+    INSIGHTFACE_MODEL_PATH,
+    IMAGE_WIDTH,
+    IMAGE_HEIGHT,
+    IMAGE_STEPS,
+    IMAGE_GUIDANCE_SCALE,
+    IMAGE_SAMPLER,
+    DEFAULT_SD_MODEL
+)
 from characters import characters
 import discord
 
-logger = logging.getLogger(__name__) # Added logger
+logger = logging.getLogger(__name__)
 
 class ImageManager:
     # Modified __init__ to accept api_manager
@@ -33,13 +43,13 @@ class ImageManager:
         if len(conversation) > 0:
             # Get bot messages
             bot_messages = [msg["content"] for msg in conversation if msg["role"] == "assistant"]
-            
+
             # Get only the last message (if any)
             if bot_messages:
                 last_bot_message = bot_messages[-1]
-                print(f"\nGenerating image prompt using the last bot message:")
-                print(f"\nMessage:\n{last_bot_message[:200]}...")  # Print first 200 chars of each message
-                
+                logger.info("Generating image prompt using the last bot message")
+                logger.debug(f"Message preview: {last_bot_message[:200]}...")
+
                 # Build the context string without using complex f-strings
                 context = "Based on the following section from a text adventure game:\n"
                 context += last_bot_message
@@ -48,57 +58,49 @@ class ImageManager:
                 context += f"\n\nGenerate a detailed image prompt for Stable Diffusion to create a photo of the character in this conversation, considering their ethnicity: {ethnicity}."
             else:
                 # Handle case where there are no bot messages yet
-                print("\nNo bot messages found, generating prompt based on character description only.")
+                logger.info("No bot messages found, generating prompt based on character description only")
                 context = "Use the information in the following text:\n"
                 context += self.image_prompt
                 context += f"\n\nGenerate a detailed image prompt for Stable Diffusion to create a photo of the character described, considering their ethnicity: {ethnicity}."
-            
+
             # Add the prompt format instructions
             context += """
             The prompt should follow this format (change <these parts> to suit the context of the conversation and how the character looks in a photo now):
-            
+
             webcam photo of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'wearing a bikini and lying on a bed with her arms stretched out'>, <describe the place, e.g. 'in a messy bedroom'>
-            
+
             MAKE SURE to extract where she is from the text, and include that background in the webcam photo prompt, AND ALSO describe what she's doing according to the text.
-            
+
             <EXAMPLES>
             webcam photo of a young american girl wearing a hoodie and glasses under the covers  dark room, grainy, candid, gritty, blurry, low quality
-            
+
             webcam photo of a young asian girl wearing a a suit and pencil skirt while holding a pen and bending over in front of the bathroom mirror, grainy, candid, gritty, blurry, low quality
-            
+
             a webcam photo of an asian woman wearing a thong and tank top posing seductively in a dorm room, holding up her hands in surprise, dark room, grainy, candid, gritty, blurry, low quality
-            
+
             ONLY generate the prompt itself, avoid narrating or commenting, just write the short descriptive prompt.
-            
+
             ALWAYS indicate what she's wearing in the photo, top and bottom, and where she is based on context.
-            
+
             ALWAYS prioritize the latter part of the context to describe her body position and what she's doing.  use the earlier context mostly for deducing the setting."""
 
-        prompt = "{image_generation_prompt}\n" + context
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant that generates image prompts."},
-            {"role": "user", "content": prompt}
-        ]
+        system_prompt = "You are a helpful assistant that generates image prompts."
+        user_prompt = "{image_generation_prompt}\n" + context
 
-        api_url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_KEY}",
-            "HTTP-Referer": "https://discord.com/api/oauth2/authorize?client_id=1139328683987980288&permissions=1084479764544&scope=bot",
-            "X-Title": "my-discord-bot",
-            "Content-Type": "application/json"
-        }
+        # Use the configured media LLM instead of hardcoded Grok
+        image_prompt = await self.api_manager.generate_media_llm_response(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=1024,
+            temperature=0.5
+        )
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, json={"model": "x-ai/grok-3-beta", "temperature": 0.5, "max_tokens": 128, "messages": messages}, headers=headers) as response:
-                response_json = await response.json()
-                if 'choices' in response_json and len(response_json['choices']) > 0:
-                    image_prompt = response_json['choices'][0]['message']['content']
-                    logger.info(f"Generated selfie prompt from OpenRouter: {image_prompt}")
-                    print(f"\nGenerated image prompt:\n{image_prompt}")
-                    return image_prompt
-                else:
-                    logger.error(f"Failed to get prompt from OpenRouter. Response: {response_json}")
-                    return None
+        if image_prompt:
+            logger.info(f"Generated selfie prompt from media LLM: {image_prompt}")
+            return image_prompt
+        else:
+            logger.error("Failed to get prompt from media LLM")
+            return None
 
     async def generate_image(self, prompt):
         reactor_args = [
@@ -135,14 +137,14 @@ class ImageManager:
         ]
 
         payload = {
-            "sd_model_checkpoint": "iniverseMixXLSFWNSFW_guofenV15.safetensors",
+            "sd_model_checkpoint": DEFAULT_SD_MODEL,
             "prompt": prompt,
-            "steps": 30,
-            "sampler_name": "DPM++ 2M Karras",
-            "width": 896,
-            "height": 1152,
+            "steps": IMAGE_STEPS,
+            "sampler_name": IMAGE_SAMPLER,
+            "width": IMAGE_WIDTH,
+            "height": IMAGE_HEIGHT,
             "seed": -1,
-            "guidance_scale": 7,
+            "guidance_scale": IMAGE_GUIDANCE_SCALE,
             "alwayson_scripts": {"reactor": {"args": reactor_args}}
         }
 
@@ -243,9 +245,9 @@ Output ONLY the short action phrase."""
             bot_messages = bot_messages[-3:] if len(bot_messages) >= 3 else bot_messages
             combined_context = "\n".join(bot_messages)
             
-            print(f"\nGenerating video prompt using {len(bot_messages)} bot messages:")
+            logger.info(f"Generating video prompt using {len(bot_messages)} bot messages")
             for i, msg in enumerate(bot_messages, 1):
-                print(f"\nMessage {i}:\n{msg[:200]}...")  # Print first 200 chars of each message
+                logger.debug(f"Message {i} preview: {msg[:200]}...")
             context = f"""
             Based on the following conversation:\n{combined_context}\n\n and this character description:\n{self.image_prompt}\n\nGenerate a short, descriptive video generation prompt to create an animated video of the character, considering their ethnicity: {ethnicity}.
             
@@ -285,7 +287,7 @@ Output ONLY the short action phrase."""
                 response_json = await response.json()
                 if 'choices' in response_json and len(response_json['choices']) > 0:
                     video_prompt = response_json['choices'][0]['message']['content']
-                    print(f"\nGenerated video prompt:\n{video_prompt}")
+                    logger.info(f"Generated video prompt: {video_prompt}")
                     return video_prompt
                 else:
                     return None

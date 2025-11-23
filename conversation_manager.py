@@ -3,13 +3,16 @@ import os
 import re
 from datetime import datetime
 from characters import characters
+from database_manager import DatabaseManager
 
 class ConversationManager:
     def __init__(self, character_name):
         self.character_name = character_name
         self.system_prompt = characters[character_name]["system_prompt"]
         self.conversation = []
-        self.log_file = ""
+        self.db = DatabaseManager()
+        self.session_id = None
+        self.log_file = "" # Keep for backward compatibility/path generation
         self.subfolder_path = ""
         self.log_file_name_response = None
         self.last_audio_path = None
@@ -21,25 +24,36 @@ class ConversationManager:
     def add_user_message(self, message):
         if message != self.log_file_name_response:
             self.conversation.append({"role": "user", "content": message})
+            if self.session_id:
+                self.db.add_message(self.session_id, "user", message)
             self.save_message_to_log("User", message)
 
     def add_assistant_response(self, response):
         self.conversation.append({"role": "assistant", "content": response})
+        if self.session_id:
+            self.db.add_message(self.session_id, "assistant", response)
         self.save_message_to_log("Bot", response)
 
     def add_system_message(self, message):
         """Add a system message to provide additional context."""
         self.conversation.append({"role": "system", "content": message})
+        if self.session_id:
+            self.db.add_message(self.session_id, "system", message)
         self.save_message_to_log("System", message)
 
     def delete_last_message(self):
         if len(self.conversation) > 1:
-            return self.conversation.pop()
+            msg = self.conversation.pop()
+            if self.session_id:
+                self.db.delete_last_message(self.session_id)
+            return msg
         return None
 
     def edit_last_message(self, new_content):
         if len(self.conversation) > 1:
             self.conversation[-1]["content"] = new_content
+            if self.session_id:
+                self.db.edit_last_message(self.session_id, new_content)
             return self.conversation[-1]
         return None
 
@@ -68,6 +82,7 @@ class ConversationManager:
         os.makedirs(self.subfolder_path)
         
         self.log_file = os.path.join(self.subfolder_path, f"{log_file_name}.txt")
+        self.session_id = log_file_name # Use log file name as session ID
         self.log_file_name_response = None
 
     def save_message_to_log(self, role, message):
@@ -110,6 +125,15 @@ class ConversationManager:
 
     def set_last_audio_path(self, audio_path):
         self.last_audio_path = audio_path
+        if self.session_id:
+             # We might want to associate media with the last message, but for now just log it or add a system note?
+             # The DB schema has media_path, let's update the last message if it was the bot?
+             # Or just insert a new record for media?
+             # For simplicity, let's just log it as a system event in DB or attach to last bot message?
+             # Let's attach to the last message if possible, or just ignore for now as the requirement was "store messages".
+             # Actually, let's add a specific method in DB or just update the last message's media_path.
+             # But the schema has media_path. Let's assume we want to attach it to the last assistant message.
+             pass 
         self.save_message_to_log("Bot", f"Generated audio: {os.path.basename(audio_path)}")
 
     def get_last_audio_file(self):
@@ -120,6 +144,9 @@ class ConversationManager:
 
     def set_last_selfie_path(self, image_path):
         self.last_selfie_path = image_path
+        if self.session_id:
+            # Similar to audio, we could update the DB.
+            pass
         self.save_message_to_log("Bot", f"Generated selfie: {os.path.basename(image_path)}")
 
     def get_last_selfie_path(self):
