@@ -36,22 +36,13 @@ CLAUDE_MODELS = {
 }
 
 OPENROUTER_MODELS = {
-    "mistralai/mistral-small-3.2-24b-instruct:free": "mistral-small",
+    "x-ai/grok-4.1-fast": "grok4.1",
     "deepseek/deepseek-chat-v3-0324": "deep",
-    "z-ai/glm-4.6": "glm",
-    "deepseek/deepseek-chat-v3.1": "deep3.1",
-    "deepseek/deepseek-chat-v3-0324:free": "deepfree",
-    "meta-llama/llama-4-maverick:free": "maverick-free",
-    "deepseek/deepseek-chat-v3.1:free": "deepfree.1",
-    "moonshotai/kimi-k2-thinking": "kimi-k2-think",
-    "cognitivecomputations/dolphin-mistral-24b-venice-edition:free": "venice-free",
-    "x-ai/grok-3-beta": "grok",
-    "x-ai/grok-4": "grok4",
-    "mistralai/mistral-medium-3": "mixtral-med"
+   
    
    
 }
-OPENROUTER_MODEL = "deepseek/deepseek-r1"  
+OPENROUTER_MODEL = "deepseek/deepseek-chat-v3-0324"  
 OPENROUTER_MAX_TOKENS = 1024
 
 # Anthropic API configuration
@@ -74,7 +65,7 @@ LMSTUDIO_HEADERS = {
 LMSTUDIO_MAX_TOKENS = 1024
 
 # Default LLM model
-DEFAULT_LLM = os.getenv('DEFAULT_LLM', 'anthropic')  # Can be "anthropic", "openrouter", or "lmstudio"
+DEFAULT_LLM = os.getenv('DEFAULT_LLM', 'openrouter')  # Can be "anthropic", "openrouter", or "lmstudio"
 
 # Set the default Claude model
 DEFAULT_CLAUDE_MODEL = "claude-3-5-sonnet-20241022"

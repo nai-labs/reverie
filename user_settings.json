@@ -1,0 +1,6 @@
+{
+    "main_provider": "OpenRouter",
+    "main_model": "x-ai/grok-4.1-fast (grok4.1)",
+    "media_provider": "OpenRouter",
+    "media_model": "x-ai/grok-4.1-fast (grok4.1)"
+}

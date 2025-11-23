@@ -246,6 +246,7 @@ class BotLauncher:
         self.processes = []
         self.conversation_windows = {}
         self.db = DatabaseManager()
+        self.user_settings = self.load_user_settings()
         
         # Main Layout
         self.root.grid_columnconfigure(0, weight=1)
@@ -267,6 +268,15 @@ class BotLauncher:
         
         # Handle close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    def load_user_settings(self):
+        try:
+            if os.path.exists("user_settings.json"):
+                with open("user_settings.json", "r") as f:
+                    return json.load(f)
+        except Exception as e:
+            print(f"Error loading settings: {e}")
+        return {}
 
     def setup_dashboard(self):
         self.tab_dashboard.grid_columnconfigure(0, weight=1)
@@ -362,12 +372,12 @@ class BotLauncher:
         ctk.CTkLabel(main_frame, text="Main Conversation LLM", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
         
         ctk.CTkLabel(main_frame, text="Provider:").grid(row=1, column=0, padx=10, pady=10)
-        self.main_provider_var = ctk.StringVar(value="Anthropic")
+        self.main_provider_var = ctk.StringVar(value=self.user_settings.get("main_provider", "OpenRouter"))
         self.main_provider_combo = ctk.CTkComboBox(main_frame, variable=self.main_provider_var, values=["Anthropic", "OpenRouter", "LMStudio"], command=self.on_main_provider_select)
         self.main_provider_combo.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
         
         ctk.CTkLabel(main_frame, text="Model:").grid(row=2, column=0, padx=10, pady=10)
-        self.main_model_var = ctk.StringVar()
+        self.main_model_var = ctk.StringVar(value=self.user_settings.get("main_model", "deepseek/deepseek-chat-v3.1 (deep3.1)"))
         self.main_model_combo = ctk.CTkComboBox(main_frame, variable=self.main_model_var, width=300)
         self.main_model_combo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
         
@@ -379,12 +389,12 @@ class BotLauncher:
         ctk.CTkLabel(media_frame, text="Media Generation LLM", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
         
         ctk.CTkLabel(media_frame, text="Provider:").grid(row=1, column=0, padx=10, pady=10)
-        self.media_provider_var = ctk.StringVar(value="OpenRouter")
+        self.media_provider_var = ctk.StringVar(value=self.user_settings.get("media_provider", "OpenRouter"))
         self.media_provider_combo = ctk.CTkComboBox(media_frame, variable=self.media_provider_var, values=["OpenRouter"], command=self.on_media_provider_select)
         self.media_provider_combo.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
         
         ctk.CTkLabel(media_frame, text="Model:").grid(row=2, column=0, padx=10, pady=10)
-        self.media_model_var = ctk.StringVar()
+        self.media_model_var = ctk.StringVar(value=self.user_settings.get("media_model", "deepseek/deepseek-chat-v3.1 (deep3.1)"))
         self.media_model_combo = ctk.CTkComboBox(media_frame, variable=self.media_model_var, width=300)
         self.media_model_combo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
         
@@ -540,6 +550,16 @@ class BotLauncher:
             with open("characters.py", "w", encoding="utf-8") as f:
                 f.write("characters = " + json.dumps(characters, indent=4, ensure_ascii=False))
             
+            # Save LLM Settings
+            settings = {
+                "main_provider": self.main_provider_var.get(),
+                "main_model": self.main_model_var.get(),
+                "media_provider": self.media_provider_var.get(),
+                "media_model": self.media_model_var.get()
+            }
+            with open("user_settings.json", "w") as f:
+                json.dump(settings, f, indent=4)
+
             messagebox.showinfo("Success", "Changes saved!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save: {e}")
@@ -552,11 +572,21 @@ class BotLauncher:
             self.main_model_combo.configure(values=[f"{n} ({c})" for n, c in OPENROUTER_MODELS.items()])
         else:
             self.main_model_combo.configure(values=["default"])
-        if self.main_model_combo._values: self.main_model_combo.set(self.main_model_combo._values[0])
+        
+        current_val = self.main_model_var.get()
+        if current_val and current_val in self.main_model_combo._values:
+            self.main_model_combo.set(current_val)
+        elif self.main_model_combo._values:
+            self.main_model_combo.set(self.main_model_combo._values[0])
 
     def update_media_model_list(self, _=None):
         self.media_model_combo.configure(values=[f"{n} ({c})" for n, c in OPENROUTER_MODELS.items()])
-        if self.media_model_combo._values: self.media_model_combo.set(self.media_model_combo._values[0])
+        
+        current_val = self.media_model_var.get()
+        if current_val and current_val in self.media_model_combo._values:
+            self.media_model_combo.set(current_val)
+        elif self.media_model_combo._values:
+            self.media_model_combo.set(self.media_model_combo._values[0])
 
     def on_main_provider_select(self, choice):
         self.update_main_model_list()

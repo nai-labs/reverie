@@ -67,16 +67,16 @@ class ImageManager:
             context += """
             The prompt should follow this format (change <these parts> to suit the context of the conversation and how the character looks in a photo now):
 
-            webcam photo of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'wearing a bikini and lying on a bed with her arms stretched out'>, <describe the place, e.g. 'in a messy bedroom'>
+            handheld amateur phone photo, pov shot of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'wearing a bikini and lying on a bed with her arms stretched out'>, <describe the place, e.g. 'in a messy bedroom'>, looking at viewer
 
             MAKE SURE to extract where she is from the text, and include that background in the webcam photo prompt, AND ALSO describe what she's doing according to the text.
 
             <EXAMPLES>
-            webcam photo of a young american girl wearing a hoodie and glasses under the covers  dark room, grainy, candid, gritty, blurry, low quality
+            handheld amateur phone photo, pov shot of a young american girl wearing a hoodie and glasses under the covers, looking up at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
 
-            webcam photo of a young asian girl wearing a a suit and pencil skirt while holding a pen and bending over in front of the bathroom mirror, grainy, candid, gritty, blurry, low quality
+            handheld amateur phone photo, pov shot of a young asian girl wearing a a suit and pencil skirt while holding a pen and bending over in front of the bathroom mirror, looking at viewer, grainy, candid, gritty, blurry, low quality, flash photography
 
-            a webcam photo of an asian woman wearing a thong and tank top posing seductively in a dorm room, holding up her hands in surprise, dark room, grainy, candid, gritty, blurry, low quality
+            handheld amateur phone photo, pov shot of an asian woman wearing a thong and tank top posing seductively in a dorm room, holding up her hands in surprise, looking at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
 
             ONLY generate the prompt itself, avoid narrating or commenting, just write the short descriptive prompt.
 

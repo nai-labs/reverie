@@ -60,6 +60,9 @@ class ReplicateManager:
         # WAN model identifier
         self.wan_model_identifier = "wavespeedai/wan-2.1-i2v-480p" # No version hash needed for library
 
+        # Omni-Human model
+        self.omni_human_model = "bytedance/omni-human"
+
         # Instantiate the replicate client
         # The client automatically uses the REPLICATE_API_TOKEN environment variable
         self.replicate_client = replicate.Client(api_token=self.token)
@@ -413,6 +416,32 @@ class ReplicateManager:
             logger.error(f"Unexpected error during WAN video generation: {e}", exc_info=True)
             return None
     # --- NEW FUNCTION END ---
+
+    async def generate_omni_human_video(self, image_path, audio_path):
+        """Generates a video using the Omni-Human model via the replicate library."""
+        logger.info(f"Generating Omni-Human video with image: {image_path} and audio: {audio_path}")
+        try:
+            with open(image_path, "rb") as image_file, open(audio_path, "rb") as audio_file:
+                input_data = {
+                    "image": image_file,
+                    "audio": audio_file
+                }
+                output_url = await asyncio.to_thread(
+                    self.replicate_client.run,
+                    self.omni_human_model,
+                    input=input_data
+                )
+                logger.info(f"Omni-Human video generation successful. Output URL: {output_url}")
+                return output_url
+        except replicate.exceptions.ReplicateError as e:
+            logger.error(f"Replicate API error during Omni-Human video generation: {e}")
+            return None
+        except FileNotFoundError as e:
+            logger.error(f"File not found for Omni-Human video generation: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error during Omni-Human video generation: {e}", exc_info=True)
+            return None
 
     async def get_model_info(self, model_name=None):
         """Get information about a model from Replicate API.

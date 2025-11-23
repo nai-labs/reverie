@@ -61,8 +61,7 @@ from tts_manager import TTSManager
 from image_manager import ImageManager
 from api_manager import APIManager
 from replicate_manager import ReplicateManager
-from hedra_manager import HedraManager
-from zonos_manager import ZonosManager
+
 from characters import characters
 from status_logger import StatusLogger
 
@@ -129,15 +128,7 @@ async def on_ready():
         bot.conversation_manager = ConversationManager(args.character)
         bot.tts_manager = TTSManager(args.character, bot.conversation_manager)
         
-        # Try to initialize Zonos, but continue if it fails
-        try:
-            logger.info("Attempting to initialize Zonos manager...")
-            bot.zonos_manager = ZonosManager(args.character, bot.conversation_manager)
-            logger.info("Zonos manager initialized successfully")
-        except Exception as e:
-            logger.warning(f"Failed to initialize Zonos manager: {str(e)}")
-            logger.warning("Bot will continue without Zonos TTS functionality")
-            bot.zonos_manager = None
+
 
         # Initialize API manager with command-line LLM settings FIRST
         llm_settings = None
@@ -156,15 +147,7 @@ async def on_ready():
         bot.image_manager = ImageManager(bot.conversation_manager, args.character, bot.api_manager) # Pass bot.api_manager
         bot.replicate_manager = ReplicateManager()
 
-        # Try to initialize Hedra, but continue if it fails
-        try:
-            logger.info("Attempting to initialize Hedra manager...")
-            bot.hedra_manager = HedraManager()
-            logger.info("Hedra manager initialized successfully")
-        except Exception as e:
-            logger.warning(f"Failed to initialize Hedra manager: {str(e)}")
-            logger.warning("Bot will continue without Hedra video functionality")
-            bot.hedra_manager = None
+
 
         # Set up log file with timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -183,25 +166,27 @@ async def on_ready():
         # Send available commands
         logger.info("Sending initial message to user...")
         try:
-            await user.send(f"""```Available commands:
-{COMMAND_PREFIX}say - Generate a voicenote using ElevenLabs
-{COMMAND_PREFIX}pic - Generate an image based on this point in the conversation
-{COMMAND_PREFIX}klingat - Generate a video using Kling and LatentSync
-{COMMAND_PREFIX}hedra - Generate a video using Hedra
-{COMMAND_PREFIX}wan - Generate a video using the WAN I2V model (requires !pic first)
+            await user.send(f"""```md
+# ✨ Available Commands ✨
 
+# 🎙️ Core
+{COMMAND_PREFIX}say  - Generate a voicenote using ElevenLabs
+{COMMAND_PREFIX}pic  - Generate an image based on conversation
 
+# 🛠️ Conversation
+{COMMAND_PREFIX}delete       - Delete the last message
+{COMMAND_PREFIX}edit <text>  - Edit the last message
+{COMMAND_PREFIX}resume <path>- Resume conversation from log
+
+# ⚙️ Settings & Tools
+{COMMAND_PREFIX}narration       - Toggle narration in TTS
+{COMMAND_PREFIX}set_voice <id>  - Set ElevenLabs voice ID
+{COMMAND_PREFIX}get_voice       - Get current voice ID
+{COMMAND_PREFIX}llm             - View/switch LLM settings
+{COMMAND_PREFIX}claude          - View/switch Claude models
+{COMMAND_PREFIX}openrouter      - View/switch OpenRouter models
+{COMMAND_PREFIX}lmstudio        - View/switch LMStudio models
 ```""")
-            
-# Optional Zonos TTS Commands (when server is available):
-# {COMMAND_PREFIX}speak - Generate a voicenote using local Zonos server
-# {COMMAND_PREFIX}test_zonos - Test connection to Zonos server
-# {COMMAND_PREFIX}set_emotion <emotion> <value> - Set emotion (e.g. happy 0.8)
-# {COMMAND_PREFIX}set_quality <value> - Set voice quality (0.5-0.8)
-# {COMMAND_PREFIX}set_speed <value> - Set speaking rate (5-30)
-# {COMMAND_PREFIX}set_pitch <value> - Set pitch variation (0-300)
-# {COMMAND_PREFIX}set_voice_sample <path> - Set voice sample for cloning
-# {COMMAND_PREFIX}show_zonos_settings - Show current Zonos settings
             logger.info("Initial message sent successfully")
         except discord.Forbidden:
             logger.error(f"Cannot send messages to user {user.name} (ID: {user.id}). Do they share a server with the bot?")
@@ -384,22 +369,7 @@ async def narration(ctx):
         user = await bot.fetch_user(ctx.bot.args.discord_id)
         await user.send("```Narration text will be excluded from the audio.```")
 
-@bot.command()
-async def say(ctx):
-    """Generate TTS for the last message or specified text."""
-    command_text = ctx.message.content[len(f'{COMMAND_PREFIX}say'):].strip()
-    if command_text:
-        tts_text = command_text
-    else:
-        last_message = ctx.bot.conversation_manager.get_last_message()
-        if last_message:
-            tts_text = ctx.bot.tts_manager.get_tts_text(last_message)
-        else:
-            user = await bot.fetch_user(ctx.bot.args.discord_id)
-            await user.send("No preceding message found in the conversation.")
-            return
 
-    await ctx.bot.tts_manager.send_tts_file(ctx, tts_text)
 
 @bot.command()
 async def set_voice(ctx, voice_id):
@@ -418,219 +388,10 @@ async def get_voice(ctx):
     user = await bot.fetch_user(ctx.bot.args.discord_id)
     await user.send(f"Current voice ID: {current_voice_id}")
 
-# Zonos TTS Commands
-@bot.command()
-async def set_emotion(ctx, emotion: str, value: float):
-    """Set emotion value for Zonos TTS (0-1)."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    emotion_map = {
-        "happy": "e1", "happiness": "e1",
-        "sad": "e2", "sadness": "e2",
-        "disgust": "e3",
-        "fear": "e4",
-        "surprise": "e5",
-        "anger": "e6", "angry": "e6",
-        "other": "e7",
-        "neutral": "e8"
-    }
-    
-    if emotion.lower() not in emotion_map:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"```Invalid emotion. Available emotions: {', '.join(set(emotion_map.keys()))}```")
-        return
-        
-    if not 0 <= value <= 1:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Emotion value must be between 0 and 1```")
-        return
-        
-    emotion_key = emotion_map[emotion.lower()]
-    ctx.bot.zonos_manager.settings[emotion_key] = value
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send(f"```Set {emotion} to {value}```")
+
 
 @bot.command()
-async def set_quality(ctx, value: float):
-    """Set voice quality for Zonos TTS (0.5-0.8)."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    if not 0.5 <= value <= 0.8:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Quality value must be between 0.5 and 0.8```")
-        return
-        
-    ctx.bot.zonos_manager.settings["vq_single"] = value
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send(f"```Set voice quality to {value}```")
-
-@bot.command()
-async def set_speed(ctx, value: float):
-    """Set speaking rate for Zonos TTS (5-30)."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    if not 5 <= value <= 30:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Speaking rate must be between 5 and 30```")
-        return
-        
-    ctx.bot.zonos_manager.settings["speaking_rate"] = value
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send(f"```Set speaking rate to {value}```")
-
-@bot.command()
-async def set_pitch(ctx, value: float):
-    """Set pitch variation for Zonos TTS (0-300)."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    if not 0 <= value <= 300:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Pitch variation must be between 0 and 300```")
-        return
-        
-    ctx.bot.zonos_manager.settings["pitch_std"] = value
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send(f"```Set pitch variation to {value}```")
-
-@bot.command()
-async def set_voice_sample(ctx, path: str):
-    """Set voice sample file for Zonos TTS voice cloning."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    if not os.path.exists(path):
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"```Voice sample file not found at: {path}```")
-        return
-        
-    ctx.bot.zonos_manager.speaker_audio = path
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send(f"```Set voice sample to: {path}```")
-
-@bot.command()
-async def test_zonos(ctx):
-    """Test connection to Zonos server."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    try:
-        # Try to connect to Zonos server
-        logger.info(f"Testing Zonos server connection at {ZONOS_URL}...")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(ZONOS_URL) as response:
-                if response.status == 200:
-                    await user.send("✅ Successfully connected to Zonos server!")
-                    content_type = response.headers.get('content-type', 'unknown')
-                    server = response.headers.get('server', 'unknown')
-                    await user.send("```Server Status:\n" + 
-                                  f"- URL: {ZONOS_URL}\n" +
-                                  "- Status Code: 200 OK\n" +
-                                  f"- Content Type: {content_type}\n" +
-                                  f"- Server: {server}\n" +
-                                  f"- Model: {ctx.bot.zonos_manager.settings['model_choice']}\n" +
-                                  "- Server is ready to generate audio```")
-                else:
-                    await user.send(f"```❌ Server responded with status code: {response.status}\n" +
-                                  f"Response headers: {dict(response.headers)}```")
-            
-    except Exception as e:
-        logger.error(f"Failed to connect to Zonos server: {str(e)}")
-        await user.send(f"```❌ Failed to connect to Zonos server: {str(e)}```")
-
-@bot.command()
-async def show_zonos_settings(ctx):
-    """Show current Zonos TTS settings."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    settings = ctx.bot.zonos_manager.settings
-    response = "Current Zonos Settings:\n"
-    response += f"Model: {settings['model_choice']}\n"
-    response += f"Language: {settings['language']}\n"
-    response += f"Voice Quality: {settings['vq_single']}\n"
-    response += f"Speaking Rate: {settings['speaking_rate']}\n"
-    response += f"Pitch Variation: {settings['pitch_std']}\n"
-    response += "\nEmotions:\n"
-    response += f"Happiness: {settings['e1']}\n"
-    response += f"Sadness: {settings['e2']}\n"
-    response += f"Disgust: {settings['e3']}\n"
-    response += f"Fear: {settings['e4']}\n"
-    response += f"Surprise: {settings['e5']}\n"
-    response += f"Anger: {settings['e6']}\n"
-    response += f"Other: {settings['e7']}\n"
-    response += f"Neutral: {settings['e8']}\n"
-    response += f"\nVoice Sample: {ctx.bot.zonos_manager.speaker_audio if ctx.bot.zonos_manager.speaker_audio else 'None'}"
-    
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send(f"```{response}```")
-
-@bot.command()
-async def speak(ctx):
-    """Generate TTS using local Zonos server."""
-    if not ctx.bot.zonos_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("```Zonos TTS is not currently available```")
-        return
-        
-    try:
-        logger.debug("Starting speak command")
-        logger.debug(f"Conversation manager initialized: {ctx.bot.conversation_manager is not None}")
-        logger.debug(f"Zonos manager initialized: {ctx.bot.zonos_manager is not None}")
-        
-        command_text = ctx.message.content[len(f'{COMMAND_PREFIX}speak'):].strip()
-        logger.debug(f"Command text: '{command_text}'")
-        
-        if command_text:
-            tts_text = command_text
-            logger.debug("Using direct command text")
-        else:
-            logger.debug("No command text, checking conversation history")
-            last_message = ctx.bot.conversation_manager.get_last_message()
-            if last_message:
-                tts_text = ctx.bot.zonos_manager.get_tts_text(last_message)
-                logger.debug(f"Using last message: '{tts_text}'")
-            else:
-                logger.debug("No last message found")
-                user = await bot.fetch_user(ctx.bot.args.discord_id)
-                await user.send("```No preceding message found in the conversation.```")
-                return
-
-        # Check output directory
-        output_dir = os.path.join(os.getcwd(), 'output')
-        logger.debug(f"Output directory: {output_dir}")
-        logger.debug(f"Output directory exists: {os.path.exists(output_dir)}")
-        if not os.path.exists(output_dir):
-            logger.debug("Creating output directory")
-            os.makedirs(output_dir)
-
-        await ctx.bot.zonos_manager.send_tts_file(ctx, tts_text)
-        
-    except Exception as e:
-        logger.error(f"Error in speak command: {str(e)}", exc_info=True)
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"```❌ Error in speak command: {str(e)}```")
-
-@bot.command()
-async def say3(ctx, *, text: Optional[str] = None):
+async def say(ctx, *, text: Optional[str] = None):
     """Generate a voicenote using ElevenLabs v3 (supports [laughter], etc.)"""
     if not text:
         # Get last message from conversation history
@@ -642,19 +403,42 @@ async def say3(ctx, *, text: Optional[str] = None):
             await user.send("```No preceding message found in the conversation.```")
             return
 
+    # Separate narration (italicized) from dialogue
+    import re
+    parts = re.split(r'(\*[^*]+\*)', text)
+    dialogue_parts = []
+    narration_parts = []
+    
+    for part in parts:
+        if part.startswith('*') and part.endswith('*'):
+            narration_parts.append(part.strip('*'))
+        else:
+            if part.strip():
+                dialogue_parts.append(part.strip())
+                
+    dialogue = " ".join(dialogue_parts)
+    narration = " ".join(narration_parts)
+    
+    if not dialogue:
+        # If no dialogue found (e.g. only actions), just use the original text as dialogue
+        dialogue = text
+        narration = ""
+
     user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send(f"Enhancing and generating v3 TTS for: {text}")
+    await user.send("```dreaming up an expressive voicenote...```")
+
     StatusLogger.print_status("Enhancing text with voice direction...", Fore.CYAN)
     
-    # Auto-enhance the text with voice direction tags
-    enhanced_text = await ctx.bot.api_manager.generate_voice_direction(text)
+    # Auto-enhance the text with voice direction tags, passing narration as context
+    enhanced_text = await ctx.bot.api_manager.generate_voice_direction(dialogue, narration)
     
     if enhanced_text:
         StatusLogger.print_info(f"Enhanced text: {enhanced_text}")
-        await user.send(f"Enhanced text: {enhanced_text}")
+        # await user.send(f"Enhanced text: {enhanced_text}")
         text = enhanced_text # Use the enhanced text
     else:
         StatusLogger.print_warning("Failed to enhance text, using original.")
+        text = dialogue # Fallback to just the dialogue
     
     StatusLogger.print_status("Generating v3 TTS...", Fore.MAGENTA)
     
@@ -671,51 +455,13 @@ async def say3(ctx, *, text: Optional[str] = None):
 
 # Image and Video Commands
 
-@bot.command()
-async def image(ctx):
-    """Generate an image using Replicate's recraft-v3 model."""
-    try:
-        prompt = await ctx.bot.image_manager.generate_selfie_prompt(ctx.bot.conversation_manager.get_conversation())
-        if prompt:
-            user = await bot.fetch_user(ctx.bot.args.discord_id)
-            await user.send("Generating image with Replicate... This may take a while.")
-            StatusLogger.print_status("Generating image...", Fore.YELLOW)
-            image_url = await ctx.bot.replicate_manager.generate_image(prompt)
-            if image_url:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(image_url) as resp:
-                        if resp.status == 200:
-                            image_data = await resp.read()
-                            image_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, "replicate_image.webp")
-                            with open(image_path, "wb") as f:
-                                f.write(image_data)
-                            ctx.bot.conversation_manager.set_last_selfie_path(image_path)
-                            user = await bot.fetch_user(ctx.bot.args.discord_id)
-                            await user.send(file=discord.File(image_path))
-                            StatusLogger.print_success("Image generated and sent!")
-                        else:
-                            user = await bot.fetch_user(ctx.bot.args.discord_id)
-                            await user.send(f"Failed to download the generated image. Status code: {resp.status}")
-                            StatusLogger.print_error("Failed to download image.")
-            else:
-                user = await bot.fetch_user(ctx.bot.args.discord_id)
-                await user.send("Failed to generate image with Replicate.")
-        else:
-            user = await bot.fetch_user(ctx.bot.args.discord_id)
-            await user.send("Failed to generate image prompt.")
-
-    except aiohttp.ClientError as e:
-        logger.error(f"Network error in image command: {e}")
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"Network error while generating image: {str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected error in image command: {e}", exc_info=True)
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"An unexpected error occurred: {str(e)}")
+# Image and Video Commands
 
 @bot.command()
 async def pic(ctx):
     """Generate a selfie image using local Stable Diffusion."""
+    user = await bot.fetch_user(ctx.bot.args.discord_id)
+    await user.send("```dreaming up a selfie...```")
     prompt = await ctx.bot.image_manager.generate_selfie_prompt(ctx.bot.conversation_manager.get_conversation())
     image_data = await ctx.bot.image_manager.generate_image(prompt)
     if image_data:
@@ -726,264 +472,6 @@ async def pic(ctx):
     else:
         user = await bot.fetch_user(ctx.bot.args.discord_id)
         await user.send("Failed to generate selfie image.")
-
-@bot.command()
-async def video(ctx):
-    """Generate a video using the last audio and character's input video."""
-    if not ctx.bot.conversation_manager or not ctx.bot.replicate_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Bot is not fully initialized. Please try again later.")
-        return
-
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send("Generating video... This may take a while.")
-
-    face_path = characters[ctx.bot.conversation_manager.character_name].get("input_video")
-    if not face_path or not os.path.exists(face_path):
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"Input video not found at path: {face_path}")
-        return
-
-    audio_path = ctx.bot.conversation_manager.get_last_audio_file()
-    if not audio_path:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("No recent audio file found.")
-        return
-
-    try:
-        output = await asyncio.create_task(ctx.bot.replicate_manager.generate_video_retalking(face_path, audio_path))
-
-        if output is None:
-            user = await bot.fetch_user(ctx.bot.args.discord_id)
-            await user.send("Failed to generate the video. Please check the logs for more details.")
-            return
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(output) as resp:
-                if resp.status == 200:
-                    video_data = await resp.read()
-                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, "retalking_video.mp4")
-                    with open(video_path, "wb") as f:
-                        f.write(video_data)
-                    
-                    user = await bot.fetch_user(ctx.bot.args.discord_id)
-                    await user.send("Here's the generated video:", file=discord.File(video_path))
-                else:
-                    user = await bot.fetch_user(ctx.bot.args.discord_id)
-                    await user.send(f"Failed to download the generated video. Status code: {resp.status}")
-    except Exception as e:
-        logger.error(f"Error in video command: {str(e)}", exc_info=True)
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"An error occurred: {str(e)}")
-
-@bot.command(name='klingat')
-async def klingat(ctx):
-    """Generate a video using the new experimental back-end."""
-    if not ctx.bot.conversation_manager or not ctx.bot.replicate_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Bot is not fully initialized. Please try again later.")
-        return
-
-    # Get last audio and selfie paths
-    audio_path = ctx.bot.conversation_manager.get_last_audio_file()
-    selfie_path = ctx.bot.conversation_manager.get_last_selfie_path()
-
-    if not audio_path or not selfie_path:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Need both recent audio and selfie. Generate them first using !say and !pic commands.")
-        return
-
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send("Generating video... This may take a while.")
-
-    try:
-        # Step 1: Generate video from image using Kling with video-specific prompt (set the duration below, that will be passed to replicate manager)
-        prompt = await ctx.bot.image_manager.generate_video_prompt(ctx.bot.conversation_manager.get_conversation())
-        kling_video_url = await ctx.bot.replicate_manager.generate_kling_video(selfie_path, prompt, duration=10)
-        
-        if not kling_video_url:
-            await user.send("Failed to generate initial video.")
-            return
-
-        # Step 2: Apply lip sync using LatentSync
-        final_video_url = await ctx.bot.replicate_manager.apply_latentsync(kling_video_url, audio_path)
-        
-        if not final_video_url:
-            await user.send("Failed to apply lip sync.")
-            return
-
-        # Download and save the final video
-        async with aiohttp.ClientSession() as session:
-            async with session.get(final_video_url) as resp:
-                if resp.status == 200:
-                    video_data = await resp.read()
-                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, "vlog2_video.mp4")
-                    with open(video_path, "wb") as f:
-                        f.write(video_data)
-                    
-                    await user.send(file=discord.File(video_path))
-                else:
-                    await user.send(f"Failed to download the generated video. Status code: {resp.status}")
-
-    except Exception as e:
-        logger.error(f"Error in klingat command: {str(e)}", exc_info=True)
-        await user.send(f"An error occurred: {str(e)}")
-
-
-
-@bot.command()
-async def talker(ctx, **kwargs):
-    """Generate a talking face video."""
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send("Generating talking face video... This may take a while.")
-    
-    last_audio, last_selfie = ctx.bot.conversation_manager.get_last_audio_and_selfie()
-    
-    logger.debug(f"Last audio path: {last_audio}")
-    logger.debug(f"Last selfie path: {last_selfie}")
-    
-    if not last_audio or not last_selfie:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Error: Missing recent audio message or selfie. Please make sure both are available in the conversation history.")
-        return
-
-    try:
-        with open(last_audio, "rb") as audio_file, open(last_selfie, "rb") as image_file:
-            prediction = await ctx.bot.replicate_manager.generate_talking_face(
-                driven_audio=audio_file,
-                source_image=image_file,
-                **kwargs
-            )
-        
-        if prediction is None:
-            user = await bot.fetch_user(ctx.bot.args.discord_id)
-            await user.send("Error: Failed to generate the talking face. Please check the console for more details.")
-            return
-        
-        output_url = prediction if isinstance(prediction, str) else prediction[0]
-        
-        logger.debug(f"Output URL: {output_url}")
-        
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Downloading the generated video...")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(output_url) as resp:
-                if resp.status == 200:
-                    video_data = await resp.read()
-                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, "talking_face.mp4")
-                    with open(video_path, "wb") as f:
-                        f.write(video_data)
-                    
-                    user = await bot.fetch_user(ctx.bot.args.discord_id)
-                    await user.send("Here's the generated talking face video:", file=discord.File(video_path))
-                else:
-                    user = await bot.fetch_user(ctx.bot.args.discord_id)
-                    await user.send(f"Failed to download the generated video. Status code: {resp.status}")
-    except Exception as e:
-        logger.error(f"Error in talker command: {str(e)}", exc_info=True)
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send(f"An error occurred: {str(e)}")
-
-# --- NEW COMMAND START ---
-@bot.command()
-async def hedra(ctx):
-    """Generate a video using Hedra."""
-    if not ctx.bot.conversation_manager or not ctx.bot.hedra_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Bot is not fully initialized. Please try again later.")
-        return
-
-    audio_path = ctx.bot.conversation_manager.get_last_audio_file()
-    selfie_path = ctx.bot.conversation_manager.get_last_selfie_path()
-
-    if not audio_path or not selfie_path:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Need both recent audio and selfie. Generate them first using !say and !pic commands.")
-        return
-
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send("Generating video with Hedra... This may take a while.")
-
-    try:
-        video_url, error = await ctx.bot.hedra_manager.generate_video(audio_path, selfie_path)
-
-        if error:
-            await user.send(f"Failed to generate video: {error}")
-            return
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(video_url) as resp:
-                if resp.status == 200:
-                    video_data = await resp.read()
-                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, "hedra_video.mp4")
-                    with open(video_path, "wb") as f:
-                        f.write(video_data)
-                    
-                    await user.send(file=discord.File(video_path))
-                else:
-                    await user.send(f"Failed to download the generated video. Status code: {resp.status}")
-
-    except Exception as e:
-        logger.error(f"Error in hedra command: {str(e)}", exc_info=True)
-        await user.send(f"An error occurred: {str(e)}")
-
-@bot.command()
-async def wan(ctx):
-    """Generate a video using the WAN I2V model."""
-    if not ctx.bot.conversation_manager or not ctx.bot.image_manager or not ctx.bot.replicate_manager:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("Bot is not fully initialized. Please try again later.")
-        return
-
-    # Get last selfie path
-    selfie_path = ctx.bot.conversation_manager.get_last_selfie_path()
-    if not selfie_path:
-        user = await bot.fetch_user(ctx.bot.args.discord_id)
-        await user.send("No recent selfie found. Generate one first using !pic.")
-        return
-
-    user = await bot.fetch_user(ctx.bot.args.discord_id)
-    await user.send("Generating WAN video prompt...")
-
-    try:
-        # Generate the simple action prompt
-        wan_prompt = await ctx.bot.image_manager.generate_wan_video_prompt(ctx.bot.conversation_manager.get_conversation())
-        if not wan_prompt:
-            await user.send("Failed to generate video prompt.")
-            return
-
-        await user.send(f"Generating WAN video with prompt: `{wan_prompt}`... This may take a while.")
-
-        # Generate the video using ReplicateManager
-        video_url = await ctx.bot.replicate_manager.generate_wan_video(selfie_path, wan_prompt)
-
-        if not video_url:
-            await user.send("Failed to generate WAN video.")
-            return
-
-        # Download and send the video
-        await user.send("Downloading generated video...")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(video_url) as resp:
-                if resp.status == 200:
-                    video_data = await resp.read()
-                    # Save the video
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    video_filename = f"wan_video_{timestamp}.mp4"
-                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, video_filename)
-                    with open(video_path, "wb") as f:
-                        f.write(video_data)
-                    logger.info(f"WAN video saved to: {video_path}")
-                    # Send the video file
-                    await user.send(file=discord.File(video_path))
-                else:
-                    logger.error(f"Failed to download WAN video. Status: {resp.status}, URL: {video_url}")
-                    await user.send(f"Failed to download the generated video (Status: {resp.status}).")
-
-    except Exception as e:
-        logger.error(f"Error in !wan command: {e}", exc_info=True)
-        await user.send(f"An unexpected error occurred during the !wan command: {e}")
-# --- NEW COMMAND END ---
 
 # Replicate Manager Commands
 

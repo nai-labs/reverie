@@ -1,0 +1,20 @@
+2025-11-23 02:24:34,393 - asyncio - DEBUG - Using proactor: IocpProactor
+2025-11-23 02:24:34,394 - replicate_manager - INFO - Initializing Replicate manager with token starting with: r8_KkwVK5J...
+2025-11-23 02:24:34,394 - replicate_manager - DEBUG - Full token length: 40 characters
+2025-11-23 02:24:34,395 - replicate_manager - INFO - Generating Omni-Human video with image: c:\AI\discord-dreams\output\session_20251123_022212\selfie_image_20251123_022253.png and audio: c:\AI\discord-dreams\output\session_20251123_022212\tts_v3_response_20251123_022234.mp3
+2025-11-23 02:24:34,697 - httpcore.connection - DEBUG - connect_tcp.started host='api.replicate.com' port=443 local_address=None timeout=5.0 socket_options=None
+2025-11-23 02:24:34,726 - httpcore.connection - DEBUG - connect_tcp.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001B29806E4E0>
+2025-11-23 02:24:34,726 - httpcore.connection - DEBUG - start_tls.started ssl_context=<ssl.SSLContext object at 0x000001B2B7B3AFD0> server_hostname='api.replicate.com' timeout=5.0
+2025-11-23 02:24:34,734 - httpcore.connection - DEBUG - start_tls.complete return_value=<httpcore._backends.sync.SyncStream object at 0x000001B2B79A02F0>
+2025-11-23 02:24:34,734 - httpcore.http11 - DEBUG - send_request_headers.started request=<Request [b'POST']>
+2025-11-23 02:24:34,734 - httpcore.http11 - DEBUG - send_request_headers.complete
+2025-11-23 02:24:34,734 - httpcore.http11 - DEBUG - send_request_body.started request=<Request [b'POST']>
+2025-11-23 02:24:34,865 - httpcore.http11 - DEBUG - send_request_body.complete
+2025-11-23 02:24:34,865 - httpcore.http11 - DEBUG - receive_response_headers.started request=<Request [b'POST']>
+2025-11-23 02:24:35,075 - httpcore.http11 - DEBUG - receive_response_headers.complete return_value=(b'HTTP/1.1', 402, b'Payment Required', [(b'Date', b'Sun, 23 Nov 2025 07:24:35 GMT'), (b'Content-Type', b'application/problem+json'), (b'Content-Length', b'249'), (b'Connection', b'keep-alive'), (b'CF-Ray', b'9a2eed7dc8f60c1e-BOS'), (b'CF-Cache-Status', b'DYNAMIC'), (b'Server', b'cloudflare'), (b'Strict-Transport-Security', b'max-age=15552000'), (b'expect-ct', b'max-age=86400, enforce'), (b'ratelimit-remaining', b'599'), (b'ratelimit-reset', b'1'), (b'referrer-policy', b'same-origin'), (b'x-content-type-options', b'nosniff'), (b'x-frame-options', b'SAMEORIGIN'), (b'x-xss-protection', b'1; mode=block'), (b'Vary', b'accept-encoding'), (b'Report-To', b'{"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=wgtDjW5KLlWOwvym8EXxYXr7gblZgUyLZC9i16dh2%2BmYsCMn%2Bj%2BwB7GaKcR3dV%2FA%2BL1Yj7bDbhCe0xFgxw%2BnBesAmuDm8nMsHNq8jkb8"}]}'), (b'Nel', b'{"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}'), (b'alt-svc', b'h3=":443"; ma=86400')])
+2025-11-23 02:24:35,077 - httpx - INFO - HTTP Request: POST https://api.replicate.com/v1/models/bytedance/omni-human/predictions "HTTP/1.1 402 Payment Required"
+2025-11-23 02:24:35,077 - httpcore.http11 - DEBUG - receive_response_body.started request=<Request [b'POST']>
+2025-11-23 02:24:35,077 - httpcore.http11 - DEBUG - receive_response_body.complete
+2025-11-23 02:24:35,077 - httpcore.http11 - DEBUG - response_closed.started
+2025-11-23 02:24:35,077 - httpcore.http11 - DEBUG - response_closed.complete
+2025-11-23 02:24:35,077 - replicate_manager - ERROR - Replicate API error during Omni-Human video generation: You have insufficient credit to run this model. Go to https://replicate.com/account/billing#billing to purchase credit. Once you purchase credit, please wait a few minutes before trying again.

@@ -21,7 +21,7 @@ class APIManager:
 
         # Set defaults for media generation LLM (assuming OpenRouter is default)
         self.media_llm_provider = "openrouter"
-        self.media_llm_model = "cohere/command-r-plus" # Default media model
+        self.media_llm_model = OPENROUTER_MODEL # Default media model
 
         # Override with llm_settings if provided
         if llm_settings:
@@ -171,7 +171,7 @@ class APIManager:
             return None # Indicate error
     # --- NEW METHOD END ---
 
-    async def generate_voice_direction(self, text):
+    async def generate_voice_direction(self, text, narration=None):
         """
         Enhances text with bracketed voice direction tags for ElevenLabs v3.
         Uses the currently selected main LLM.
@@ -179,10 +179,12 @@ class APIManager:
         logger.info("APIManager: Generating voice direction tags...")
         
         system_prompt = (
-            "You are an expert voice director. Your task is to rewrite the following message for a text-to-speech model. "
+            "You are an expert voice director. Your task is to rewrite the DIALOGUE for a text-to-speech model. "
             "Add bracketed voice direction tags (e.g., [laughter], [sighs], [whispering], [shouting], [clears throat], [giggles]) "
             "to express the emotion and delivery style. "
-            "Do not change the core message words significantly, just add the performance tags where appropriate. "
+            "Use the provided NARRATION/CONTEXT (if any) to infer the correct tone and emotion, but DO NOT include the narration text in your output. "
+            "Your output must ONLY contain the spoken dialogue and the bracketed tags. "
+            "Do not change the core dialogue words significantly, just add the performance tags where appropriate. "
             "Keep it natural."
         )
         
@@ -190,8 +192,12 @@ class APIManager:
         # We create a temporary conversation context
         temp_conversation = [] 
         
+        input_text = text
+        if narration:
+            input_text = f"Dialogue: {text}\nNarration/Context: {narration}"
+        
         # We can use the generic generate_response method
-        response = await self.generate_response(text, temp_conversation, system_prompt)
+        response = await self.generate_response(input_text, temp_conversation, system_prompt)
         
         # Clean up response if needed (sometimes models add "Here is the rewritten text:")
         # For now, assume the model follows instructions well enough or we take the whole response.
