@@ -1,7 +1,7 @@
 # Discord Dreams (Web App Branch)
 
 <p align="center">
-  <img src="replicate-prediction-z8dm3bbczdrmc0ctr9rvme2gbg.png" alt="Discord Dreams Logo" width="300">
+  <img src="web/logo.png" alt="Discord Dreams Logo" width="300">
 </p>
 
 A powerful, local AI roleplay web application that brings your characters to life with real-time chat, voice synthesis, and multimedia generation.

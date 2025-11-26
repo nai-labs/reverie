@@ -33,6 +33,7 @@ Thumbs.db
 *.wav
 *.jpg
 *.png
+!web/logo.png
 *.gif
 *.key
 *.pem

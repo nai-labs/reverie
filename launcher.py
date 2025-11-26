@@ -317,16 +317,34 @@ class BotLauncher:
         self.tab_dashboard.grid_columnconfigure(0, weight=1)
         self.tab_dashboard.grid_rowconfigure(1, weight=1)  # Process list expands
         
-        # --- Quick Deploy Section ---
+        # --- Header Section (Logo + Quick Deploy) ---
+        header_frame = ctk.CTkFrame(self.tab_dashboard, fg_color="transparent")
+        header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        header_frame.grid_columnconfigure(0, weight=1)
+        
+        # Quick Deploy Frame
         deploy_frame = ctk.CTkFrame(
-            self.tab_dashboard,
+            header_frame,
             fg_color=COLORS["bg_secondary"],
             border_color=COLORS["border"],
             border_width=1,
             corner_radius=10
         )
-        deploy_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        deploy_frame.grid(row=0, column=0, sticky="ew", padx=(0, 10))
         
+        # Logo (Top Right)
+        try:
+            logo_path = os.path.join("web", "logo.png")
+            if os.path.exists(logo_path):
+                img = Image.open(logo_path)
+                # Resize to small icon
+                img.thumbnail((40, 40))
+                logo_img = ctk.CTkImage(light_image=img, dark_image=img, size=(40, 40))
+                logo_label = ctk.CTkLabel(header_frame, image=logo_img, text="")
+                logo_label.grid(row=0, column=1, sticky="e")
+        except Exception as e:
+            print(f"Error loading dashboard logo: {e}")
+
         ctk.CTkLabel(deploy_frame, text="User:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(side="left", padx=10)
         self.user_var = ctk.StringVar()
         self.user_combo = ctk.CTkComboBox(
@@ -871,8 +889,9 @@ class SplashScreen:
         
         # Load Image
         try:
-            if os.path.exists("replicate-prediction-z8dm3bbczdrmc0ctr9rvme2gbg.png"):
-                image = Image.open("replicate-prediction-z8dm3bbczdrmc0ctr9rvme2gbg.png")
+            logo_path = os.path.join("web", "logo.png")
+            if os.path.exists(logo_path):
+                image = Image.open(logo_path)
                 
                 # Get original image size
                 original_width, original_height = image.size
@@ -905,8 +924,8 @@ class SplashScreen:
                 # Fallback if image not found
                 width, height = 400, 100
                 self.window.geometry(f"{width}x{height}")
-                self.window.configure(fg_color="#0f172a")
-                ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 24, "bold"), text_color="#38bdf8").pack(expand=True)
+                self.window.configure(fg_color=COLORS["bg_primary"])
+                ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 24, "bold"), text_color=COLORS["accent_cyan"]).pack(expand=True)
                 
                 # Center fallback window
                 screen_width = self.window.winfo_screenwidth()
@@ -919,8 +938,8 @@ class SplashScreen:
             # Fallback
             width, height = 400, 100
             self.window.geometry(f"{width}x{height}")
-            self.window.configure(fg_color="#0f172a")
-            ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 24, "bold"), text_color="#38bdf8").pack(expand=True)
+            self.window.configure(fg_color=COLORS["bg_primary"])
+            ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 24, "bold"), text_color=COLORS["accent_cyan"]).pack(expand=True)
             
             # Center fallback window
             screen_width = self.window.winfo_screenwidth()
