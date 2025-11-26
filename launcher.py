@@ -439,6 +439,7 @@ class BotLauncher:
 
     def setup_character_settings(self):
         self.tab_char.grid_columnconfigure(1, weight=1)
+        self.tab_char.grid_rowconfigure(0, weight=1)  # Allow System Prompt to expand vertically
         
         # System Prompt
         ctk.CTkLabel(
@@ -448,13 +449,13 @@ class BotLauncher:
         ).grid(row=0, column=0, sticky="nw", padx=10, pady=10)
         self.system_prompt = ctk.CTkTextbox(
             self.tab_char,
-            height=100,
+            height=300,  # Increased default height
             fg_color=COLORS["input_bg"],
             border_color=COLORS["border"],
             border_width=1,
             text_color=COLORS["text_primary"]
         )
-        self.system_prompt.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
+        self.system_prompt.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)  # sticky="nsew" to fill space
         
         # Image Prompt
         ctk.CTkLabel(
@@ -464,7 +465,7 @@ class BotLauncher:
         ).grid(row=1, column=0, sticky="nw", padx=10, pady=10)
         self.image_prompt = ctk.CTkTextbox(
             self.tab_char,
-            height=80,
+            height=40,  # Reduced to ~1 line
             fg_color=COLORS["input_bg"],
             border_color=COLORS["border"],
             border_width=1,
@@ -480,7 +481,7 @@ class BotLauncher:
         ).grid(row=2, column=0, sticky="nw", padx=10, pady=10)
         self.scenario = ctk.CTkTextbox(
             self.tab_char,
-            height=80,
+            height=60,  # Slightly reduced
             fg_color=COLORS["input_bg"],
             border_color=COLORS["border"],
             border_width=1,

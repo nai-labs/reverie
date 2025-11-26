@@ -1,13 +1,17 @@
 # Discord Dreams (Web App Branch)
 
+<p align="center">
+  <img src="replicate-prediction-z8dm3bbczdrmc0ctr9rvme2gbg.png" alt="Discord Dreams Logo" width="300">
+</p>
+
 A powerful, local AI roleplay web application that brings your characters to life with real-time chat, voice synthesis, and multimedia generation.
 
 > **Note**: This is the **Web App** branch. It operates as a standalone local web server and does not require or interact with Discord.
 
 ## 🌟 Features
 
-*   **Immersive Web Interface**: A modern, dark-themed chat UI with rich text support and dynamic backgrounds.
-*   **Smart Launcher**: Easy-to-use GUI (`launcher.py`) to manage users, select characters, and launch the server.
+*   **Glassmorphism Premium UI**: A stunning, modern interface featuring glass-effect panels, dynamic gradients, and smooth animations.
+*   **Sleek Launcher**: A professional GUI (`launcher.py`) with a cohesive "Slate" theme to manage users, characters, and settings.
 *   **Multi-LLM Support**: Seamlessly switch between Anthropic (Claude), OpenRouter, and LMStudio models.
 *   **Real-Time TTS**: Integrated ElevenLabs Text-to-Speech with auto-play and voice direction.
 *   **Multimedia Generation**:
