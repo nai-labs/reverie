@@ -72,7 +72,9 @@ class SettingsRequest(BaseModel):
     system_prompt: Optional[str] = None
     image_prompt: Optional[str] = None
     tts_url: Optional[str] = None
+    tts_url: Optional[str] = None
     read_narration: Optional[bool] = None
+    pov_mode: Optional[bool] = None
 
 # --- Endpoints ---
 
@@ -280,7 +282,12 @@ async def generate_image():
     
     # 1. Generate Prompt
     conversation = state.conversation_manager.get_conversation()
-    prompt = await state.image_manager.generate_selfie_prompt(conversation)
+    
+    # Get POV mode setting
+    char_settings = characters.get(state.character_name, {})
+    pov_mode = char_settings.get("pov_mode", False)
+    
+    prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode)
     
     if not prompt:
         raise HTTPException(status_code=500, detail="Failed to generate image prompt")
@@ -379,7 +386,9 @@ async def get_settings():
         "image_prompt": char_data.get("image_prompt", ""),
         "tts_url": char_data.get("tts_url", ""),
         "voice_settings": char_data.get("voice_settings", {}),
-        "read_narration": char_data.get("read_narration", False)
+        "voice_settings": char_data.get("voice_settings", {}),
+        "read_narration": char_data.get("read_narration", False),
+        "pov_mode": char_data.get("pov_mode", False)
     }
 
 @app.post("/api/settings")
@@ -407,6 +416,9 @@ async def update_settings(settings: SettingsRequest):
         
     if settings.read_narration is not None:
         characters[state.character_name]["read_narration"] = settings.read_narration
+        
+    if settings.pov_mode is not None:
+        characters[state.character_name]["pov_mode"] = settings.pov_mode
         
     # Save to file
     try:

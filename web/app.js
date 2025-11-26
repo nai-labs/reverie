@@ -326,6 +326,7 @@ async function openSettings() {
         document.getElementById('image-prompt').value = data.image_prompt;
         document.getElementById('tts-url').value = data.tts_url;
         document.getElementById('read-narration').checked = data.read_narration;
+        document.getElementById('pov-mode').checked = data.pov_mode;
 
         settingsModal.classList.remove('hidden');
     } catch (error) {
@@ -338,7 +339,8 @@ async function saveSettings() {
         system_prompt: document.getElementById('system-prompt').value,
         image_prompt: document.getElementById('image-prompt').value,
         tts_url: document.getElementById('tts-url').value,
-        read_narration: document.getElementById('read-narration').checked
+        read_narration: document.getElementById('read-narration').checked,
+        pov_mode: document.getElementById('pov-mode').checked
     };
 
     try {

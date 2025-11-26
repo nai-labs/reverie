@@ -32,7 +32,7 @@ class ImageManager:
         self.image_prompt = characters[character_name]["image_prompt"]
         self.source_faces_folder = characters[character_name]["source_faces_folder"]
 
-    async def generate_selfie_prompt(self, conversation):
+    async def generate_selfie_prompt(self, conversation, pov_mode=False):
         ethnicity_match = re.search(r'\b(?:\d+(?:-year-old)?[\s-]?)?(?:asian|lebanese|black|african|caucasian|white|hispanic|latino|latina|mexican|european|middle eastern|indian|native american|pacific islander|mixed race|biracial|multiracial|[^\s]+?(?=\s+(?:girl|woman|lady|female|man|guy|male|dude)))\b', self.image_prompt, re.IGNORECASE)
         if ethnicity_match:
             ethnicity = ethnicity_match.group()
@@ -63,26 +63,49 @@ class ImageManager:
                 context += self.image_prompt
                 context += f"\n\nGenerate a detailed image prompt for Stable Diffusion to create a photo of the character described, considering their ethnicity: {ethnicity}."
 
-            # Add the prompt format instructions
-            context += """
-            The prompt should follow this format (change <these parts> to suit the context of the conversation and how the character looks in a photo now):
+            # Add the prompt format instructions based on mode
+            if pov_mode:
+                context += """
+                The prompt should follow this format (change <these parts> to suit the context of the conversation and how the character looks in a photo now):
 
-            handheld amateur phone photo, pov shot of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'wearing a bikini and lying on a bed with her arms stretched out'>, <describe the place, e.g. 'in a messy bedroom'>, looking at viewer
+                cinematic shot, raw photo, first-person view of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'sitting across the table holding a coffee cup'>, <describe the place, e.g. 'in a cozy cafe'>, <mood/lighting>, looking at viewer (if interacting) OR looking away (if described)
 
-            MAKE SURE to extract where she is from the text, and include that background in the webcam photo prompt, AND ALSO describe what she's doing according to the text.
+                MAKE SURE to extract where she is from the text, and include that background in the prompt, AND ALSO describe what she's doing according to the text.
 
-            <EXAMPLES>
-            handheld amateur phone photo, pov shot of a young american girl wearing a hoodie and glasses under the covers, looking up at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
+                <EXAMPLES>
+                cinematic shot, raw photo, first-person view of a young american girl wearing a hoodie and glasses sitting on the bed, looking up at viewer with a smile, dark room, warm lamp light, cozy atmosphere, high quality, 8k
 
-            handheld amateur phone photo, pov shot of a young asian girl wearing a a suit and pencil skirt while holding a pen and bending over in front of the bathroom mirror, looking at viewer, grainy, candid, gritty, blurry, low quality, flash photography
+                cinematic shot, raw photo, first-person view of a young asian girl wearing a suit and pencil skirt standing in front of the bathroom mirror applying makeup, looking at reflection, bright bathroom lighting, sharp focus, detailed
 
-            handheld amateur phone photo, pov shot of an asian woman wearing a thong and tank top posing seductively in a dorm room, holding up her hands in surprise, looking at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
+                cinematic shot, raw photo, first-person view of an asian woman wearing a summer dress walking away down the beach, turning back to look at viewer, sunset lighting, golden hour, wind blowing hair, romantic atmosphere
 
-            ONLY generate the prompt itself, avoid narrating or commenting, just write the short descriptive prompt.
+                ONLY generate the prompt itself, avoid narrating or commenting, just write the short descriptive prompt.
+                DO NOT use terms like 'handheld phone photo', 'selfie', or 'holding camera'.
+                Focus on the immersive atmosphere and the character's interaction with the observer (the camera).
 
-            ALWAYS indicate what she's wearing in the photo, top and bottom, and where she is based on context.
+                ALWAYS indicate what she's wearing in the photo, top and bottom, and where she is based on context.
+                ALWAYS prioritize the latter part of the context to describe her body position and what she's doing. use the earlier context mostly for deducing the setting."""
+            else:
+                # Default Selfie Mode
+                context += """
+                The prompt should follow this format (change <these parts> to suit the context of the conversation and how the character looks in a photo now):
 
-            ALWAYS prioritize the latter part of the context to describe her body position and what she's doing.  use the earlier context mostly for deducing the setting."""
+                handheld amateur phone photo, pov shot of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'wearing a bikini and lying on a bed with her arms stretched out'>, <describe the place, e.g. 'in a messy bedroom'>, looking at viewer
+
+                MAKE SURE to extract where she is from the text, and include that background in the webcam photo prompt, AND ALSO describe what she's doing according to the text.
+
+                <EXAMPLES>
+                handheld amateur phone photo, pov shot of a young american girl wearing a hoodie and glasses under the covers, looking up at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
+
+                handheld amateur phone photo, pov shot of a young asian girl wearing a a suit and pencil skirt while holding a pen and bending over in front of the bathroom mirror, looking at viewer, grainy, candid, gritty, blurry, low quality, flash photography
+
+                handheld amateur phone photo, pov shot of an asian woman wearing a thong and tank top posing seductively in a dorm room, holding up her hands in surprise, looking at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
+
+                ONLY generate the prompt itself, avoid narrating or commenting, just write the short descriptive prompt.
+
+                ALWAYS indicate what she's wearing in the photo, top and bottom, and where she is based on context.
+
+                ALWAYS prioritize the latter part of the context to describe her body position and what she's doing.  use the earlier context mostly for deducing the setting."""
 
         system_prompt = "You are a helpful assistant that generates image prompts."
         user_prompt = "{image_generation_prompt}\n" + context
