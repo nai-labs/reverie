@@ -42,7 +42,7 @@ OPENROUTER_MODELS = {
    
    
 }
-OPENROUTER_MODEL = "deepseek/deepseek-chat-v3-0324"  
+OPENROUTER_MODEL = "x-ai/grok-4.1-fast"  
 OPENROUTER_MAX_TOKENS = 1024
 
 # Anthropic API configuration

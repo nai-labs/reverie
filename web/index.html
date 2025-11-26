@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,11 +8,12 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
 </head>
+
 <body>
     <div id="app">
         <!-- Background Layer -->
         <div id="background-layer"></div>
-        
+
         <!-- Main Container -->
         <div class="container">
             <!-- Header -->
@@ -35,12 +37,26 @@
             <!-- Input Area -->
             <div id="input-area">
                 <div class="input-wrapper">
-                    <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+                    <textarea id="message-input" placeholder="Type a message..." rows="1"></textarea>
                     <button id="send-btn">Send</button>
                 </div>
                 <div class="action-buttons">
                     <button id="gen-image-btn" class="action-btn">📸 Selfie</button>
                     <button id="gen-video-btn" class="action-btn">🎥 Video</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Password Modal -->
+        <div id="password-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>Enter Password</h2>
+                <div class="form-group">
+                    <label for="remote-password">Remote Access Password:</label>
+                    <input type="password" id="remote-password" placeholder="Enter password">
+                </div>
+                <div class="modal-actions">
+                    <button id="submit-password-btn">Submit</button>
                 </div>
             </div>
         </div>
@@ -70,4 +86,5 @@
     </div>
     <script src="app.js"></script>
 </body>
+
 </html>

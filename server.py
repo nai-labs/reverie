@@ -2,13 +2,14 @@ import os
 import re
 import logging
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
+import json
 
 # Import existing managers (we will refactor them slightly if needed)
 from conversation_manager import ConversationManager
@@ -106,7 +107,96 @@ async def init_session(request: InitRequest):
     # Initialize TTSManager
     state.tts_manager = TTSManager(state.character_name, state.conversation_manager)
     
-    return {"status": "initialized", "session_id": session_id, "character": state.character_name}
+    initial_message = None
+    # Check for scenario and generate initial message
+    if state.character_name in characters:
+        scenario = characters[state.character_name].get("scenario")
+        if scenario:
+            logger.info(f"Generating initial message for scenario: {scenario}")
+            try:
+                # Use APIManager to generate response based on scenario
+                # We pass the scenario as the message, but with empty history
+                initial_message = await state.api_manager.generate_response(
+                    message=scenario,
+                    conversation=[],
+                    system_prompt=characters[state.character_name].get("system_prompt", "")
+                )
+                
+                if initial_message:
+                    state.conversation_manager.add_assistant_response(initial_message)
+            except Exception as e:
+                logger.error(f"Failed to generate initial message: {e}")
+
+    return {
+        "status": "initialized", 
+        "session_id": session_id, 
+        "character": state.character_name,
+        "initial_message": initial_message
+    }
+
+@app.get("/api/session")
+async def get_session():
+    # Load settings to check for password
+    requires_password = False
+    try:
+        if os.path.exists("user_settings.json"):
+            with open("user_settings.json", "r") as f:
+                settings = json.load(f)
+                if settings.get("remote_password"):
+                    requires_password = True
+    except:
+        pass
+
+    return {
+        "user": state.user_id,
+        "character": state.character_name,
+        "session_id": state.conversation_manager.session_id if state.conversation_manager else None,
+        "requires_password": requires_password
+    }
+
+class AuthRequest(BaseModel):
+    password: str
+
+@app.post("/api/auth")
+async def authenticate(request: AuthRequest):
+    try:
+        if os.path.exists("user_settings.json"):
+            with open("user_settings.json", "r") as f:
+                settings = json.load(f)
+                stored_password = settings.get("remote_password")
+                if stored_password and request.password == stored_password:
+                    return {"success": True}
+    except Exception as e:
+        logger.error(f"Auth error: {e}")
+    
+    return {"success": False}
+
+@app.get("/api/history")
+async def get_history(request: Request): # Import Request from fastapi
+    # Check password in header
+    password = request.headers.get("X-Remote-Password")
+    authorized = False
+    
+    try:
+        if os.path.exists("user_settings.json"):
+            with open("user_settings.json", "r") as f:
+                settings = json.load(f)
+                stored_password = settings.get("remote_password")
+                if not stored_password: # No password set
+                    authorized = True
+                elif password == stored_password:
+                    authorized = True
+        else:
+            authorized = True # No settings file
+    except:
+        pass
+        
+    if not authorized:
+         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if state.conversation_manager:
+        return {"history": state.conversation_manager.get_conversation()}
+    return {"history": []}
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):

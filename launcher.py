@@ -306,6 +306,13 @@ class BotLauncher:
         self.char_combo.pack(side="left", padx=5)
         if self.char_combo._values: self.char_combo.set(self.char_combo._values[0])
         
+        ctk.CTkLabel(deploy_frame, text="Remote Password:", font=("Segoe UI", 12, "bold")).pack(side="left", padx=10)
+        self.password_entry = ctk.CTkEntry(deploy_frame, width=150, show="*")
+        self.password_entry.pack(side="left", padx=5)
+        # Load saved password
+        saved_pass = self.user_settings.get("remote_password", "")
+        self.password_entry.insert(0, saved_pass)
+        
         self.deploy_btn = ctk.CTkButton(deploy_frame, text="LAUNCH APP", command=self.deploy_bot, fg_color="#00E676", text_color="black", font=("Segoe UI", 12, "bold"))
         self.deploy_btn.pack(side="left", padx=20)
         
@@ -482,7 +489,9 @@ class BotLauncher:
         try:
             # Open browser
             import webbrowser
-            webbrowser.open("http://localhost:8000")
+            import urllib.parse
+            query_params = urllib.parse.urlencode({'user': user, 'character': char})
+            webbrowser.open(f"http://localhost:8000?{query_params}")
             
             # Use cmd /k to keep window open on error for debugging
             if os.name == 'nt':
@@ -560,7 +569,8 @@ class BotLauncher:
                 "main_provider": self.main_provider_var.get(),
                 "main_model": self.main_model_var.get(),
                 "media_provider": self.media_provider_var.get(),
-                "media_model": self.media_model_var.get()
+                "media_model": self.media_model_var.get(),
+                "remote_password": self.password_entry.get()
             }
             with open("user_settings.json", "w") as f:
                 json.dump(settings, f, indent=4)
@@ -620,13 +630,9 @@ class SplashScreen:
             if os.path.exists("dd.png"):
                 image = Image.open("dd.png")
                 width, height = image.size
-                self.photo = ImageTk.PhotoImage(image)
-                
-                # Set window size to image size
-                self.window.geometry(f"{width}x{height}")
-                
                 # Image Label (Background)
-                self.img_label = ctk.CTkLabel(self.window, image=self.photo, text="")
+                self.ctk_image = ctk.CTkImage(light_image=image, dark_image=image, size=(width, height))
+                self.img_label = ctk.CTkLabel(self.window, image=self.ctk_image, text="")
                 self.img_label.place(x=0, y=0, relwidth=1, relheight=1)
             else:
                 self.window.geometry(f"{width}x{height}")

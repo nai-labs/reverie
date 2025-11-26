@@ -1,8 +1,10 @@
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = '/api';
 
 // State
-let user = "User";
-let character = "Anika";
+const urlParams = new URLSearchParams(window.location.search);
+let user = urlParams.get('user') || "User";
+let character = urlParams.get('character') || "Anika";
+let sessionPassword = null;
 
 // Elements
 const messagesDiv = document.getElementById('messages');
@@ -16,20 +18,122 @@ const closeSettingsBtn = document.getElementById('close-settings-btn');
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 const backgroundLayer = document.getElementById('background-layer');
 
+// Password Elements
+const passwordModal = document.getElementById('password-modal');
+const passwordInput = document.getElementById('remote-password');
+const submitPasswordBtn = document.getElementById('submit-password-btn');
+
 // Initialization
 async function init() {
     try {
-        const response = await fetch(`${API_BASE}/init`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user, character })
-        });
-        const data = await response.json();
-        console.log('Session initialized:', data);
-        addSystemMessage(`Connected to ${character}.`);
+        // Check if we have URL params (Launcher)
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramUser = urlParams.get('user');
+        const paramChar = urlParams.get('character');
+
+        if (paramUser && paramChar) {
+            // We are the launcher/host, force init
+            user = paramUser;
+            character = paramChar;
+            await initializeSession(user, character);
+        } else {
+            // We are a remote client, check for existing session
+            try {
+                const sessionResp = await fetch(`${API_BASE}/session`);
+                const sessionData = await sessionResp.json();
+
+                if (sessionData.character && sessionData.session_id) {
+                    // Join existing session
+                    user = sessionData.user;
+                    character = sessionData.character;
+                    console.log('Joining existing session:', sessionData);
+
+                    if (sessionData.requires_password) {
+                        passwordModal.classList.remove('hidden');
+                    } else {
+                        addSystemMessage(`Joined session with ${character}.`);
+                        await loadHistory();
+                    }
+                } else {
+                    // No active session, fallback to default init
+                    console.log('No active session, initializing default.');
+                    await initializeSession(user, character);
+                }
+            } catch (e) {
+                console.error('Failed to check session:', e);
+                await initializeSession(user, character);
+            }
+        }
     } catch (error) {
         console.error('Init failed:', error);
         addSystemMessage('Failed to connect to server.');
+    }
+}
+
+async function authenticate() {
+    const password = passwordInput.value;
+    try {
+        const response = await fetch(`${API_BASE}/auth`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            sessionPassword = password;
+            passwordModal.classList.add('hidden');
+            addSystemMessage(`Joined session with ${character}.`);
+            await loadHistory();
+        } else {
+            alert("Incorrect password");
+        }
+    } catch (e) {
+        console.error("Auth failed:", e);
+        alert("Authentication failed");
+    }
+}
+
+async function loadHistory() {
+    try {
+        const headers = {};
+        if (sessionPassword) {
+            headers['X-Remote-Password'] = sessionPassword;
+        }
+
+        const response = await fetch(`${API_BASE}/history`, { headers });
+        if (response.ok) {
+            const data = await response.json();
+            messagesDiv.innerHTML = ''; // Clear existing messages
+
+            data.history.forEach(msg => {
+                if (msg.role === 'user') {
+                    addMessage(user, msg.content, 'user');
+                } else if (msg.role === 'assistant') {
+                    addMessage(character, msg.content, 'bot');
+                } else if (msg.role === 'system') {
+                    addSystemMessage(msg.content);
+                }
+            });
+            scrollToBottom();
+        }
+    } catch (e) {
+        console.error("Failed to load history:", e);
+    }
+}
+
+async function initializeSession(user, character) {
+    const response = await fetch(`${API_BASE}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user, character })
+    });
+    const data = await response.json();
+    console.log('Session initialized:', data);
+    addSystemMessage(`Connected to ${character}.`);
+
+    if (data.initial_message) {
+        addMessage(character, data.initial_message, 'bot');
     }
 }
 
@@ -83,10 +187,7 @@ function addMessage(sender, content, type, audioFile = null) {
         `;
     } else if (type === 'bot') {
         // Add generate audio button for bot messages
-        // We use a unique ID for the button to replace it later
-        const btnId = `tts-btn-${Date.now()}`;
-        // Store the text content in a data attribute (safe encoding)
-        // encodeURIComponent doesn't escape single quotes, so we must do it manually to avoid breaking the onclick attribute
+        const btnId = `tts-btn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const safeText = encodeURIComponent(content).replace(/'/g, "%27");
 
         html += `
@@ -253,17 +354,40 @@ async function saveSettings() {
 }
 
 // Event Listeners
-sendBtn.addEventListener('click', sendMessage);
-messageInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') sendMessage();
-});
+if (submitPasswordBtn) {
+    submitPasswordBtn.addEventListener('click', authenticate);
+}
+if (passwordInput) {
+    passwordInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') authenticate();
+    });
+}
 
-genImageBtn.addEventListener('click', generateImage);
-genVideoBtn.addEventListener('click', generateVideo);
+if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+if (messageInput) {
+    messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
 
-settingsBtn.addEventListener('click', openSettings);
-closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
-saveSettingsBtn.addEventListener('click', saveSettings);
+    // Auto-resize
+    messageInput.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+        if (this.value === '') {
+            this.style.height = '24px'; // Reset to default
+        }
+    });
+}
+
+if (genImageBtn) genImageBtn.addEventListener('click', generateImage);
+if (genVideoBtn) genVideoBtn.addEventListener('click', generateVideo);
+
+if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
+if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', saveSettings);
 
 // Start
-init();
+document.addEventListener('DOMContentLoaded', init);
