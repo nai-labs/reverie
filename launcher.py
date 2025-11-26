@@ -17,9 +17,24 @@ from characters import characters
 from config import CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL
 from database_manager import DatabaseManager
 
-# Set theme
+# Set theme to match web UI (Glassmorphism Premium)
 ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("blue")
+
+# Custom color scheme matching web UI (Refined Slate Palette)
+COLORS = {
+    "bg_primary": "#0f172a",        # Slate 900 (Main Background)
+    "bg_secondary": "#1e293b",      # Slate 800 (Secondary/Panels)
+    "glass_panel": "#1e293b",       # Slate 800 (Unified with secondary for cleaner look)
+    "input_bg": "#334155",          # Slate 700 (Input fields)
+    "accent_cyan": "#0ea5e9",       # Sky 500 (Slightly deeper cyan for better contrast)
+    "accent_purple": "#6366f1",     # Indigo 500 (Smoother purple)
+    "text_primary": "#f8fafc",      # Slate 50
+    "text_secondary": "#94a3b8",    # Slate 400
+    "border": "#334155",            # Slate 700
+    "success": "#22c55e",           # Green 500
+    "error": "#ef4444",             # Red 500
+    "hover": "#475569"              # Slate 600
+}
 
 class ConversationWindow:
     def __init__(self, root, process_info, session_id, db):
@@ -242,6 +257,9 @@ class BotLauncher:
         self.root = root
         self.root.title("Discord Dreams Bot Launcher")
         
+        # Apply custom background color
+        self.root.configure(fg_color=COLORS["bg_primary"])
+        
         # Center main window
         window_width = 1000
         window_height = 800
@@ -260,7 +278,16 @@ class BotLauncher:
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
         
-        self.tabview = ctk.CTkTabview(self.root)
+        self.tabview = ctk.CTkTabview(
+            self.root,
+            fg_color=COLORS["glass_panel"],
+            segmented_button_fg_color=COLORS["bg_primary"],
+            segmented_button_selected_color=COLORS["accent_cyan"],
+            segmented_button_selected_hover_color=COLORS["accent_purple"],
+            segmented_button_unselected_color=COLORS["bg_primary"],
+            segmented_button_unselected_hover_color=COLORS["hover"],
+            text_color=COLORS["text_primary"]
+        )
         self.tabview.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
         
         self.tab_dashboard = self.tabview.add("Dashboard")
@@ -288,134 +315,353 @@ class BotLauncher:
 
     def setup_dashboard(self):
         self.tab_dashboard.grid_columnconfigure(0, weight=1)
-        self.tab_dashboard.grid_rowconfigure(1, weight=1) # Process list expands
+        self.tab_dashboard.grid_rowconfigure(1, weight=1)  # Process list expands
         
         # --- Quick Deploy Section ---
-        deploy_frame = ctk.CTkFrame(self.tab_dashboard)
+        deploy_frame = ctk.CTkFrame(
+            self.tab_dashboard,
+            fg_color=COLORS["bg_secondary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            corner_radius=10
+        )
         deploy_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
         
-        ctk.CTkLabel(deploy_frame, text="User:", font=("Segoe UI", 12, "bold")).pack(side="left", padx=10)
+        ctk.CTkLabel(deploy_frame, text="User:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(side="left", padx=10)
         self.user_var = ctk.StringVar()
-        self.user_combo = ctk.CTkComboBox(deploy_frame, variable=self.user_var, values=list_users(), width=150)
+        self.user_combo = ctk.CTkComboBox(
+            deploy_frame,
+            variable=self.user_var,
+            values=list_users(),
+            width=150,
+            fg_color=COLORS["input_bg"],
+            button_color=COLORS["accent_cyan"],
+            button_hover_color=COLORS["accent_purple"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_hover_color=COLORS["hover"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
         self.user_combo.pack(side="left", padx=5)
-        if self.user_combo._values: self.user_combo.set(self.user_combo._values[0])
+        if self.user_combo._values:
+            self.user_combo.set(self.user_combo._values[0])
         
-        ctk.CTkLabel(deploy_frame, text="Character:", font=("Segoe UI", 12, "bold")).pack(side="left", padx=10)
+        ctk.CTkLabel(deploy_frame, text="Character:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(side="left", padx=10)
         self.char_var = ctk.StringVar()
-        self.char_combo = ctk.CTkComboBox(deploy_frame, variable=self.char_var, values=list(characters.keys()), width=150, command=self.on_character_select)
+        self.char_combo = ctk.CTkComboBox(
+            deploy_frame,
+            variable=self.char_var,
+            values=list(characters.keys()),
+            width=150,
+            command=self.on_character_select,
+            fg_color=COLORS["input_bg"],
+            button_color=COLORS["accent_cyan"],
+            button_hover_color=COLORS["accent_purple"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_hover_color=COLORS["hover"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
         self.char_combo.pack(side="left", padx=5)
-        if self.char_combo._values: self.char_combo.set(self.char_combo._values[0])
+        if self.char_combo._values:
+            self.char_combo.set(self.char_combo._values[0])
         
-        ctk.CTkLabel(deploy_frame, text="Remote Password:", font=("Segoe UI", 12, "bold")).pack(side="left", padx=10)
-        self.password_entry = ctk.CTkEntry(deploy_frame, width=150, show="*")
+        ctk.CTkLabel(deploy_frame, text="Remote Password:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(side="left", padx=10)
+        self.password_entry = ctk.CTkEntry(
+            deploy_frame,
+            width=150,
+            show="*",
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"]
+        )
         self.password_entry.pack(side="left", padx=5)
         # Load saved password
         saved_pass = self.user_settings.get("remote_password", "")
         self.password_entry.insert(0, saved_pass)
         
-        self.deploy_btn = ctk.CTkButton(deploy_frame, text="LAUNCH APP", command=self.deploy_bot, fg_color="#00E676", text_color="black", font=("Segoe UI", 12, "bold"))
+        self.deploy_btn = ctk.CTkButton(
+            deploy_frame,
+            text="LAUNCH APP",
+            command=self.deploy_bot,
+            fg_color=COLORS["accent_cyan"],
+            hover_color=COLORS["accent_purple"],
+            text_color="white",
+            font=("Segoe UI", 12, "bold")
+        )
         self.deploy_btn.pack(side="left", padx=20)
         
         # --- Process Monitor Section ---
-        ctk.CTkLabel(self.tab_dashboard, text="Active Bots", font=("Segoe UI", 16, "bold")).grid(row=1, column=0, sticky="w", padx=10, pady=(10,0))
+        ctk.CTkLabel(
+            self.tab_dashboard,
+            text="Active Bots",
+            font=("Segoe UI", 16, "bold"),
+            text_color=COLORS["text_primary"]
+        ).grid(row=1, column=0, sticky="w", padx=10, pady=(10, 0))
         
-        # Scrollable frame for processes (replacing Treeview)
-        self.process_list_frame = ctk.CTkScrollableFrame(self.tab_dashboard, label_text="Running Processes")
+        # Scrollable frame for processes
+        self.process_list_frame = ctk.CTkScrollableFrame(
+            self.tab_dashboard,
+            label_text="Running Processes",
+            fg_color=COLORS["bg_secondary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            label_text_color=COLORS["text_secondary"],
+            scrollbar_button_color=COLORS["accent_cyan"],
+            scrollbar_button_hover_color=COLORS["accent_purple"]
+        )
         self.process_list_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
-        self.process_list_frame.grid_columnconfigure(1, weight=1) # Character column expands
+        self.process_list_frame.grid_columnconfigure(1, weight=1)  # Character column expands
         
         # Footer buttons
         footer_frame = ctk.CTkFrame(self.tab_dashboard, fg_color="transparent")
         footer_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
         
-        ctk.CTkButton(footer_frame, text="Stop All Bots", command=self.stop_all_bots, fg_color="#FF5252", hover_color="#D32F2F").pack(side="right", padx=5)
-        ctk.CTkButton(footer_frame, text="Refresh List", command=self.update_process_list).pack(side="right", padx=5)
+        ctk.CTkButton(
+            footer_frame,
+            text="Stop All Bots",
+            command=self.stop_all_bots,
+            fg_color=COLORS["error"],
+            hover_color="#dc2626"
+        ).pack(side="right", padx=5)
+        
+        ctk.CTkButton(
+            footer_frame,
+            text="Refresh List",
+            command=self.update_process_list,
+            fg_color=COLORS["input_bg"],
+            hover_color=COLORS["hover"],
+            border_color=COLORS["border"],
+            border_width=1
+        ).pack(side="right", padx=5)
 
     def setup_character_settings(self):
         self.tab_char.grid_columnconfigure(1, weight=1)
         
         # System Prompt
-        ctk.CTkLabel(self.tab_char, text="System Prompt:").grid(row=0, column=0, sticky="nw", padx=10, pady=10)
-        self.system_prompt = ctk.CTkTextbox(self.tab_char, height=100)
+        ctk.CTkLabel(
+            self.tab_char,
+            text="System Prompt:",
+            text_color=COLORS["text_primary"]
+        ).grid(row=0, column=0, sticky="nw", padx=10, pady=10)
+        self.system_prompt = ctk.CTkTextbox(
+            self.tab_char,
+            height=100,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            border_width=1,
+            text_color=COLORS["text_primary"]
+        )
         self.system_prompt.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
         
         # Image Prompt
-        ctk.CTkLabel(self.tab_char, text="Image Prompt:").grid(row=1, column=0, sticky="nw", padx=10, pady=10)
-        self.image_prompt = ctk.CTkTextbox(self.tab_char, height=80)
+        ctk.CTkLabel(
+            self.tab_char,
+            text="Image Prompt:",
+            text_color=COLORS["text_primary"]
+        ).grid(row=1, column=0, sticky="nw", padx=10, pady=10)
+        self.image_prompt = ctk.CTkTextbox(
+            self.tab_char,
+            height=80,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            border_width=1,
+            text_color=COLORS["text_primary"]
+        )
         self.image_prompt.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
         
         # Scenario
-        ctk.CTkLabel(self.tab_char, text="Scenario:").grid(row=2, column=0, sticky="nw", padx=10, pady=10)
-        self.scenario = ctk.CTkTextbox(self.tab_char, height=80)
+        ctk.CTkLabel(
+            self.tab_char,
+            text="Scenario:",
+            text_color=COLORS["text_primary"]
+        ).grid(row=2, column=0, sticky="nw", padx=10, pady=10)
+        self.scenario = ctk.CTkTextbox(
+            self.tab_char,
+            height=80,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            border_width=1,
+            text_color=COLORS["text_primary"]
+        )
         self.scenario.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
         
         # Voice Settings Frame
-        voice_frame = ctk.CTkFrame(self.tab_char)
+        voice_frame = ctk.CTkFrame(
+            self.tab_char,
+            fg_color=COLORS["bg_secondary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            corner_radius=10
+        )
         voice_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10, pady=10)
         voice_frame.grid_columnconfigure(1, weight=1)
         
-        ctk.CTkLabel(voice_frame, text="TTS URL:").grid(row=0, column=0, padx=10, pady=10)
-        self.tts_url = ctk.CTkEntry(voice_frame)
+        ctk.CTkLabel(
+            voice_frame,
+            text="TTS URL:",
+            text_color=COLORS["text_primary"]
+        ).grid(row=0, column=0, padx=10, pady=10)
+        self.tts_url = ctk.CTkEntry(
+            voice_frame,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"]
+        )
         self.tts_url.grid(row=0, column=1, sticky="ew", padx=10, pady=10)
         
         settings_grid = ctk.CTkFrame(voice_frame, fg_color="transparent")
         settings_grid.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5)
         
-        ctk.CTkLabel(settings_grid, text="Stability:").pack(side="left", padx=5)
-        self.stability = ctk.CTkEntry(settings_grid, width=60)
+        ctk.CTkLabel(settings_grid, text="Stability:", text_color=COLORS["text_primary"]).pack(side="left", padx=5)
+        self.stability = ctk.CTkEntry(
+            settings_grid,
+            width=60,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"]
+        )
         self.stability.pack(side="left", padx=5)
         
-        ctk.CTkLabel(settings_grid, text="Similarity:").pack(side="left", padx=5)
-        self.similarity = ctk.CTkEntry(settings_grid, width=60)
+        ctk.CTkLabel(settings_grid, text="Similarity:", text_color=COLORS["text_primary"]).pack(side="left", padx=5)
+        self.similarity = ctk.CTkEntry(
+            settings_grid,
+            width=60,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"]
+        )
         self.similarity.pack(side="left", padx=5)
         
-        ctk.CTkLabel(settings_grid, text="Style:").pack(side="left", padx=5)
-        self.style = ctk.CTkEntry(settings_grid, width=60)
+        ctk.CTkLabel(settings_grid, text="Style:", text_color=COLORS["text_primary"]).pack(side="left", padx=5)
+        self.style = ctk.CTkEntry(
+            settings_grid,
+            width=60,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"]
+        )
         self.style.pack(side="left", padx=5)
         
         # Save Button
-        ctk.CTkButton(self.tab_char, text="Save Changes", command=self.save_changes, fg_color="#448AFF").grid(row=4, column=0, columnspan=2, pady=20)
+        ctk.CTkButton(
+            self.tab_char,
+            text="Save Changes",
+            command=self.save_changes,
+            fg_color=COLORS["accent_cyan"],
+            hover_color=COLORS["accent_purple"]
+        ).grid(row=4, column=0, columnspan=2, pady=20)
 
     def setup_llm_settings(self):
         self.tab_llm.grid_columnconfigure(1, weight=1)
         
         # Main LLM
-        main_frame = ctk.CTkFrame(self.tab_llm)
+        main_frame = ctk.CTkFrame(
+            self.tab_llm,
+            fg_color=COLORS["bg_secondary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            corner_radius=10
+        )
         main_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=20)
         main_frame.grid_columnconfigure(1, weight=1)
         
-        ctk.CTkLabel(main_frame, text="Main Conversation LLM", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
+        ctk.CTkLabel(
+            main_frame,
+            text="Main Conversation LLM",
+            font=("Segoe UI", 14, "bold"),
+            text_color=COLORS["text_primary"]
+        ).grid(row=0, column=0, columnspan=2, pady=10)
         
-        ctk.CTkLabel(main_frame, text="Provider:").grid(row=1, column=0, padx=10, pady=10)
+        ctk.CTkLabel(main_frame, text="Provider:", text_color=COLORS["text_primary"]).grid(row=1, column=0, padx=10, pady=10)
         self.main_provider_var = ctk.StringVar(value=self.user_settings.get("main_provider", "OpenRouter"))
-        self.main_provider_combo = ctk.CTkComboBox(main_frame, variable=self.main_provider_var, values=["Anthropic", "OpenRouter", "LMStudio"], command=self.on_main_provider_select)
+        self.main_provider_combo = ctk.CTkComboBox(
+            main_frame,
+            variable=self.main_provider_var,
+            values=["Anthropic", "OpenRouter", "LMStudio"],
+            command=self.on_main_provider_select,
+            fg_color=COLORS["input_bg"],
+            button_color=COLORS["accent_cyan"],
+            button_hover_color=COLORS["accent_purple"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_hover_color=COLORS["hover"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
         self.main_provider_combo.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
         
-        ctk.CTkLabel(main_frame, text="Model:").grid(row=2, column=0, padx=10, pady=10)
+        ctk.CTkLabel(main_frame, text="Model:", text_color=COLORS["text_primary"]).grid(row=2, column=0, padx=10, pady=10)
         self.main_model_var = ctk.StringVar(value=self.user_settings.get("main_model", "deepseek/deepseek-chat-v3.1 (deep3.1)"))
-        self.main_model_combo = ctk.CTkComboBox(main_frame, variable=self.main_model_var, width=300)
+        self.main_model_combo = ctk.CTkComboBox(
+            main_frame,
+            variable=self.main_model_var,
+            width=300,
+            fg_color=COLORS["input_bg"],
+            button_color=COLORS["accent_cyan"],
+            button_hover_color=COLORS["accent_purple"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_hover_color=COLORS["hover"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
         self.main_model_combo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
         
         # Media LLM
-        media_frame = ctk.CTkFrame(self.tab_llm)
+        media_frame = ctk.CTkFrame(
+            self.tab_llm,
+            fg_color=COLORS["bg_secondary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            corner_radius=10
+        )
         media_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=20, pady=20)
         media_frame.grid_columnconfigure(1, weight=1)
         
-        ctk.CTkLabel(media_frame, text="Media Generation LLM", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=10)
+        ctk.CTkLabel(
+            media_frame,
+            text="Media Generation LLM",
+            font=("Segoe UI", 14, "bold"),
+            text_color=COLORS["text_primary"]
+        ).grid(row=0, column=0, columnspan=2, pady=10)
         
-        ctk.CTkLabel(media_frame, text="Provider:").grid(row=1, column=0, padx=10, pady=10)
+        ctk.CTkLabel(media_frame, text="Provider:", text_color=COLORS["text_primary"]).grid(row=1, column=0, padx=10, pady=10)
         self.media_provider_var = ctk.StringVar(value=self.user_settings.get("media_provider", "OpenRouter"))
-        self.media_provider_combo = ctk.CTkComboBox(media_frame, variable=self.media_provider_var, values=["OpenRouter"], command=self.on_media_provider_select)
+        self.media_provider_combo = ctk.CTkComboBox(
+            media_frame,
+            variable=self.media_provider_var,
+            values=["OpenRouter"],
+            command=self.on_media_provider_select,
+            fg_color=COLORS["input_bg"],
+            button_color=COLORS["accent_cyan"],
+            button_hover_color=COLORS["accent_purple"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_hover_color=COLORS["hover"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
         self.media_provider_combo.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
         
-        ctk.CTkLabel(media_frame, text="Model:").grid(row=2, column=0, padx=10, pady=10)
+        ctk.CTkLabel(media_frame, text="Model:", text_color=COLORS["text_primary"]).grid(row=2, column=0, padx=10, pady=10)
         self.media_model_var = ctk.StringVar(value=self.user_settings.get("media_model", "deepseek/deepseek-chat-v3.1 (deep3.1)"))
-        self.media_model_combo = ctk.CTkComboBox(media_frame, variable=self.media_model_var, width=300)
+        self.media_model_combo = ctk.CTkComboBox(
+            media_frame,
+            variable=self.media_model_var,
+            width=300,
+            fg_color=COLORS["input_bg"],
+            button_color=COLORS["accent_cyan"],
+            button_hover_color=COLORS["accent_purple"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_hover_color=COLORS["hover"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
         self.media_model_combo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
-        
-        # Initialize lists
-        self.update_main_model_list()
-        self.update_media_model_list()
 
     def update_process_list(self):
         # Clear existing widgets in scrollable frame
@@ -620,55 +866,73 @@ class SplashScreen:
         self.on_complete = on_complete
         
         self.window = ctk.CTkToplevel(root)
-        self.window.overrideredirect(True) # Frameless
-        
-        # Default size if image fails
-        width, height = 500, 400
+        self.window.overrideredirect(True)  # Frameless
         
         # Load Image
         try:
-            if os.path.exists("dd.png"):
-                image = Image.open("dd.png")
-                width, height = image.size
-                # Image Label (Background)
-                self.ctk_image = ctk.CTkImage(light_image=image, dark_image=image, size=(width, height))
+            if os.path.exists("replicate-prediction-z8dm3bbczdrmc0ctr9rvme2gbg.png"):
+                image = Image.open("replicate-prediction-z8dm3bbczdrmc0ctr9rvme2gbg.png")
+                
+                # Get original image size
+                original_width, original_height = image.size
+                
+                # Limit max size to reasonable bounds
+                max_size = 400
+                if original_width > max_size or original_height > max_size:
+                    ratio = min(max_size / original_width, max_size / original_height)
+                    display_width = int(original_width * ratio)
+                    display_height = int(original_height * ratio)
+                else:
+                    display_width = original_width
+                    display_height = original_height
+                
+                # Set window size to match image exactly (no background visible)
+                self.window.geometry(f"{display_width}x{display_height}")
+                
+                # Create image that fills the entire window
+                self.ctk_image = ctk.CTkImage(light_image=image, dark_image=image, size=(display_width, display_height))
                 self.img_label = ctk.CTkLabel(self.window, image=self.ctk_image, text="")
                 self.img_label.place(x=0, y=0, relwidth=1, relheight=1)
+                
+                # Center window on screen
+                screen_width = self.window.winfo_screenwidth()
+                screen_height = self.window.winfo_screenheight()
+                x = (screen_width - display_width) // 2
+                y = (screen_height - display_height) // 2
+                self.window.geometry(f"{display_width}x{display_height}+{x}+{y}")
             else:
+                # Fallback if image not found
+                width, height = 400, 100
                 self.window.geometry(f"{width}x{height}")
-                self.window.configure(fg_color="#1a1a1a")
-                ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 32, "bold")).place(relx=0.5, rely=0.4, anchor="center")
+                self.window.configure(fg_color="#0f172a")
+                ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 24, "bold"), text_color="#38bdf8").pack(expand=True)
+                
+                # Center fallback window
+                screen_width = self.window.winfo_screenwidth()
+                screen_height = self.window.winfo_screenheight()
+                x = (screen_width - width) // 2
+                y = (screen_height - height) // 2
+                self.window.geometry(f"{width}x{height}+{x}+{y}")
         except Exception as e:
             print(f"Error loading splash image: {e}")
+            # Fallback
+            width, height = 400, 100
             self.window.geometry(f"{width}x{height}")
-            self.window.configure(fg_color="#1a1a1a")
-            ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 32, "bold")).place(relx=0.5, rely=0.4, anchor="center")
-
-        # Center window on screen
-        screen_width = self.window.winfo_screenwidth()
-        screen_height = self.window.winfo_screenheight()
-        x = (screen_width - width) // 2
-        y = (screen_height - height) // 2
-        self.window.geometry(f"{width}x{height}+{x}+{y}")
-
-        # Button (Overlay)
-        self.btn = ctk.CTkButton(
-            self.window, 
-            text="Click to Open Launcher", 
-            font=("Segoe UI", 14, "bold"),
-            fg_color="#00E676", 
-            text_color="black",
-            hover_color="#00C853",
-            command=self.enter_launcher,
-            height=40,
-            bg_color="transparent",
-            background_corner_colors=None # Try to make corners transparent if possible, though CTkButton is rectangular
-        )
-        # Place at bottom center
-        self.btn.place(relx=0.5, rely=0.9, anchor="center")
+            self.window.configure(fg_color="#0f172a")
+            ctk.CTkLabel(self.window, text="Discord Dreams", font=("Segoe UI", 24, "bold"), text_color="#38bdf8").pack(expand=True)
+            
+            # Center fallback window
+            screen_width = self.window.winfo_screenwidth()
+            screen_height = self.window.winfo_screenheight()
+            x = (screen_width - width) // 2
+            y = (screen_height - height) // 2
+            self.window.geometry(f"{width}x{height}+{x}+{y}")
         
         self.window.lift()
         self.window.focus_force()
+        
+        # Auto-close after 1 second
+        self.window.after(1000, self.enter_launcher)
 
     def enter_launcher(self):
         self.window.destroy()
