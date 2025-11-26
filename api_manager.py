@@ -171,22 +171,35 @@ class APIManager:
             return None # Indicate error
     # --- NEW METHOD END ---
 
-    async def generate_voice_direction(self, text, narration=None):
+    async def generate_voice_direction(self, text, narration=None, include_narration=False):
         """
         Enhances text with bracketed voice direction tags for ElevenLabs v3.
         Uses the currently selected main LLM.
         """
-        logger.info("APIManager: Generating voice direction tags...")
+        logger.info(f"APIManager: Generating voice direction tags... (Include Narration: {include_narration})")
         
-        system_prompt = (
-            "You are an expert voice director. Your task is to rewrite the DIALOGUE for a text-to-speech model. "
-            "Add bracketed voice direction tags (e.g., [laughter], [sighs], [whispering], [shouting], [clears throat], [giggles]) "
-            "to express the emotion and delivery style. "
-            "Use the provided NARRATION/CONTEXT (if any) to infer the correct tone and emotion, but DO NOT include the narration text in your output. "
-            "Your output must ONLY contain the spoken dialogue and the bracketed tags. "
-            "Do not change the core dialogue words significantly, just add the performance tags where appropriate. "
-            "Keep it natural."
-        )
+        if include_narration:
+            system_prompt = (
+                "You are an expert voice actor and director. Your task is to prepare the FULL TEXT for a text-to-speech performance. "
+                "The narration should NOT be read neutrally. It must embody the character's perspective and the emotional weight of the scene. "
+                "Add bracketed voice direction tags (e.g., [laughter], [sighs], [whispering], [shouting], [clears throat], [giggles], [breathy], [shaky]) "
+                "to express the emotion and delivery style for BOTH dialogue and narration. "
+                "For narration, use tags to color the storytelling (e.g. [whispering] for stealth, [shaky] for fear, [excited] for action). "
+                "The input text may contain dialogue and narration (usually in italics). "
+                "You MUST include BOTH the dialogue and the narration in your output. "
+                "Do not omit any part of the text. "
+                "Keep it natural and immersive."
+            )
+        else:
+            system_prompt = (
+                "You are an expert voice director. Your task is to rewrite the DIALOGUE for a text-to-speech model. "
+                "Add bracketed voice direction tags (e.g., [laughter], [sighs], [whispering], [shouting], [clears throat], [giggles]) "
+                "to express the emotion and delivery style. "
+                "Use the provided NARRATION/CONTEXT (if any) to infer the correct tone and emotion, but DO NOT include the narration text in your output. "
+                "Your output must ONLY contain the spoken dialogue and the bracketed tags. "
+                "Do not change the core dialogue words significantly, just add the performance tags where appropriate. "
+                "Keep it natural."
+            )
         
         # Reuse the existing generate_response logic but with a specific system prompt
         # We create a temporary conversation context
@@ -201,7 +214,8 @@ class APIManager:
         
         # Clean up response if needed (sometimes models add "Here is the rewritten text:")
         # For now, assume the model follows instructions well enough or we take the whole response.
-        return response
+        # Remove asterisks as they can interfere with TTS generation
+        return response.replace('*', '')
 
     def get_current_llm(self):
         return self.current_llm

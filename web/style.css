@@ -290,6 +290,24 @@ button:active {
     font-size: 0.9rem;
 }
 
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: var(--accent-color);
+}
+
+.checkbox-group label {
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
 textarea {
     width: 100%;
     height: 100px;
@@ -298,6 +316,7 @@ textarea {
 
 .modal-actions {
     display: flex;
+    gap: 10px;
 }
 
 ::-webkit-scrollbar-track {

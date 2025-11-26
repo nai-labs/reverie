@@ -72,6 +72,7 @@ class SettingsRequest(BaseModel):
     system_prompt: Optional[str] = None
     image_prompt: Optional[str] = None
     tts_url: Optional[str] = None
+    read_narration: Optional[bool] = None
 
 # --- Endpoints ---
 
@@ -251,7 +252,10 @@ async def generate_tts(request: TTSRequest):
     
     try:
         # Use voice direction logic
-        voice_directed_text = await state.api_manager.generate_voice_direction(text)
+        char_settings = characters.get(state.character_name, {})
+        include_narration = char_settings.get("read_narration", False)
+        
+        voice_directed_text = await state.api_manager.generate_voice_direction(text, include_narration=include_narration)
         
         if voice_directed_text:
             tts_path = await state.tts_manager.generate_v3_tts(voice_directed_text)
@@ -374,7 +378,8 @@ async def get_settings():
         "system_prompt": char_data.get("system_prompt", ""),
         "image_prompt": char_data.get("image_prompt", ""),
         "tts_url": char_data.get("tts_url", ""),
-        "voice_settings": char_data.get("voice_settings", {})
+        "voice_settings": char_data.get("voice_settings", {}),
+        "read_narration": char_data.get("read_narration", False)
     }
 
 @app.post("/api/settings")
@@ -400,11 +405,14 @@ async def update_settings(settings: SettingsRequest):
     if settings.tts_url is not None:
         characters[state.character_name]["tts_url"] = settings.tts_url
         
+    if settings.read_narration is not None:
+        characters[state.character_name]["read_narration"] = settings.read_narration
+        
     # Save to file
     try:
         import json
         with open("characters.py", "w", encoding="utf-8") as f:
-            f.write("characters = " + json.dumps(characters, indent=4, ensure_ascii=False))
+            f.write("characters = " + json.dumps(characters, indent=4, ensure_ascii=False).replace("false", "False").replace("true", "True").replace("null", "None"))
     except Exception as e:
         logger.error(f"Failed to save settings: {e}")
         raise HTTPException(status_code=500, detail="Failed to save settings to file")

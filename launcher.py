@@ -562,7 +562,7 @@ class BotLauncher:
             })
             
             with open("characters.py", "w", encoding="utf-8") as f:
-                f.write("characters = " + json.dumps(characters, indent=4, ensure_ascii=False))
+                f.write("characters = " + json.dumps(characters, indent=4, ensure_ascii=False).replace("false", "False").replace("true", "True").replace("null", "None"))
             
             # Save LLM Settings
             settings = {
