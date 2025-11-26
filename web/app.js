@@ -291,7 +291,7 @@ function scrollToBottom() {
 
 // Media Generation
 async function generateImage() {
-    addSystemMessage('Generating selfie...');
+    addSystemMessage('Generating image...');
     try {
         const response = await fetch(`${API_BASE}/generate/image`, { method: 'POST' });
         if (!response.ok) throw new Error('Generation failed');
@@ -327,6 +327,7 @@ async function openSettings() {
         document.getElementById('tts-url').value = data.tts_url;
         document.getElementById('read-narration').checked = data.read_narration;
         document.getElementById('pov-mode').checked = data.pov_mode;
+        document.getElementById('first-person-mode').checked = data.first_person_mode;
 
         settingsModal.classList.remove('hidden');
     } catch (error) {
@@ -340,7 +341,8 @@ async function saveSettings() {
         image_prompt: document.getElementById('image-prompt').value,
         tts_url: document.getElementById('tts-url').value,
         read_narration: document.getElementById('read-narration').checked,
-        pov_mode: document.getElementById('pov-mode').checked
+        pov_mode: document.getElementById('pov-mode').checked,
+        first_person_mode: document.getElementById('first-person-mode').checked
     };
 
     try {

@@ -32,7 +32,7 @@ class ImageManager:
         self.image_prompt = characters[character_name]["image_prompt"]
         self.source_faces_folder = characters[character_name]["source_faces_folder"]
 
-    async def generate_selfie_prompt(self, conversation, pov_mode=False):
+    async def generate_selfie_prompt(self, conversation, pov_mode=False, first_person_mode=False):
         ethnicity_match = re.search(r'\b(?:\d+(?:-year-old)?[\s-]?)?(?:asian|lebanese|black|african|caucasian|white|hispanic|latino|latina|mexican|european|middle eastern|indian|native american|pacific islander|mixed race|biracial|multiracial|[^\s]+?(?=\s+(?:girl|woman|lady|female|man|guy|male|dude)))\b', self.image_prompt, re.IGNORECASE)
         if ethnicity_match:
             ethnicity = ethnicity_match.group()
@@ -61,10 +61,36 @@ class ImageManager:
                 logger.info("No bot messages found, generating prompt based on character description only")
                 context = "Use the information in the following text:\n"
                 context += self.image_prompt
-                context += f"\n\nGenerate a detailed image prompt for Stable Diffusion to create a photo of the character described, considering their ethnicity: {ethnicity}."
+                context += f"\n\nGenerate a detailed image prompt for Stable Diffusion to create a photo of the character in this conversation, considering their ethnicity: {ethnicity}."
+
 
             # Add the prompt format instructions based on mode
-            if pov_mode:
+            if first_person_mode:
+                # Override context to ignore character description if in first person mode
+                # We want the SCENE, not the character
+                context += """
+                The prompt should follow this format:
+
+                cinematic shot, raw photo, first-person view of <describe the scene/action from the user's eyes>, <mood/lighting>, <environment details>, realistic, 8k, high quality
+
+                IMPORTANT:
+                - This is a FIRST-PERSON view (POV) of the player.
+                - DO NOT describe the character defined in the text unless they are explicitly in the scene.
+                - Focus on what the player is seeing (hands, environment, objects, other people).
+                - If the character is present, describe them naturally in the scene.
+                - If the character is NOT present (e.g. player is alone), describe the environment.
+
+                <EXAMPLES>
+                cinematic shot, raw photo, first-person view of walking through a dark forest, holding a flashlight, tall trees, fog, eerie atmosphere, realistic, 8k
+
+                cinematic shot, raw photo, first-person view of sitting at a desk looking at a computer screen, hands on keyboard, coffee mug on table, dim lighting, realistic, 8k
+
+                cinematic shot, raw photo, first-person view of looking at a woman standing in the doorway, warm lighting, cozy home atmosphere, realistic, 8k
+
+                ONLY generate the prompt itself, avoid narrating or commenting.
+                DO NOT use terms like 'handheld phone photo' or 'selfie'.
+                """
+            elif pov_mode:
                 context += """
                 The prompt should follow this format (change <these parts> to suit the context of the conversation and how the character looks in a photo now):
 
@@ -125,10 +151,14 @@ class ImageManager:
             logger.error("Failed to get prompt from media LLM")
             return None
 
-    async def generate_image(self, prompt):
+    async def generate_image(self, prompt, first_person_mode=False):
+        # Determine if we should use ReActor (Face Swap)
+        # If first_person_mode is True, we DISABLE ReActor because we want a generic/scene view, not the character's face
+        use_reactor = not first_person_mode
+        
         reactor_args = [
             None,  # Placeholder for img_base64
-            True,  # Enable ReActor
+            use_reactor,  # Enable ReActor
             '0',  # Comma separated face number(s) from swap-source image
             '0',  # Comma separated face number(s) for target image (result)
             INSIGHTFACE_MODEL_PATH,  # Model path

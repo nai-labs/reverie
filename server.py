@@ -75,6 +75,7 @@ class SettingsRequest(BaseModel):
     tts_url: Optional[str] = None
     read_narration: Optional[bool] = None
     pov_mode: Optional[bool] = None
+    first_person_mode: Optional[bool] = None
 
 # --- Endpoints ---
 
@@ -283,17 +284,19 @@ async def generate_image():
     # 1. Generate Prompt
     conversation = state.conversation_manager.get_conversation()
     
-    # Get POV mode setting
+    # Get POV mode and First-Person mode settings
     char_settings = characters.get(state.character_name, {})
     pov_mode = char_settings.get("pov_mode", False)
+    first_person_mode = char_settings.get("first_person_mode", False)
     
-    prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode)
+    prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode, first_person_mode=first_person_mode)
     
     if not prompt:
         raise HTTPException(status_code=500, detail="Failed to generate image prompt")
         
     # 2. Generate Image
-    image_data = await state.image_manager.generate_image(prompt)
+    # Pass first_person_mode to disable face swap if needed
+    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode)
     
     if not image_data:
         raise HTTPException(status_code=500, detail="Failed to generate image")
@@ -388,7 +391,8 @@ async def get_settings():
         "voice_settings": char_data.get("voice_settings", {}),
         "voice_settings": char_data.get("voice_settings", {}),
         "read_narration": char_data.get("read_narration", False),
-        "pov_mode": char_data.get("pov_mode", False)
+        "pov_mode": char_data.get("pov_mode", False),
+        "first_person_mode": char_data.get("first_person_mode", False)
     }
 
 @app.post("/api/settings")
@@ -419,6 +423,9 @@ async def update_settings(settings: SettingsRequest):
         
     if settings.pov_mode is not None:
         characters[state.character_name]["pov_mode"] = settings.pov_mode
+        
+    if settings.first_person_mode is not None:
+        characters[state.character_name]["first_person_mode"] = settings.first_person_mode
         
     # Save to file
     try:
