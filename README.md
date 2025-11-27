@@ -1,17 +1,17 @@
-# Discord Dreams (Web App Branch)
+# Reverie (formerly Discord Dreams)
 
 <p align="center">
-  <img src="web/logo.png" alt="Discord Dreams Logo" width="300">
+  <img src="web/logo.png" alt="Reverie Logo" width="300">
 </p>
 
-A powerful, local AI roleplay web application that brings your characters to life with real-time chat, voice synthesis, and multimedia generation.
+A powerful, standalone local AI roleplay platform that brings your characters to life with real-time chat, voice synthesis, and multimedia generation.
 
-> **Note**: This is the **Web App** branch. It operates as a standalone local web server and does not require or interact with Discord.
+> **Note**: This is the **Reverie** standalone branch. It operates as a local web server and does not require Discord.
 
 ## 🌟 Features
 
 *   **Glassmorphism Premium UI**: A stunning, modern interface featuring glass-effect panels, dynamic gradients, and smooth animations.
-*   **Sleek Launcher**: A professional GUI (`launcher.py`) with a cohesive "Slate" theme to manage users, characters, and settings.
+*   **Reverie Launcher**: A professional GUI (`launcher.py`) with a cohesive "Slate" theme to manage users, characters, and settings.
 *   **Multi-LLM Support**: Seamlessly switch between Anthropic (Claude), OpenRouter, and LMStudio models.
 *   **Real-Time TTS**: Integrated ElevenLabs Text-to-Speech with auto-play and voice direction.
 *   **Multimedia Generation**:
