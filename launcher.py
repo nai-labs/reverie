@@ -317,33 +317,15 @@ class BotLauncher:
         self.tab_dashboard.grid_columnconfigure(0, weight=1)
         self.tab_dashboard.grid_rowconfigure(1, weight=1)  # Process list expands
         
-        # --- Header Section (Logo + Quick Deploy) ---
-        header_frame = ctk.CTkFrame(self.tab_dashboard, fg_color="transparent")
-        header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        header_frame.grid_columnconfigure(0, weight=1)
-        
-        # Logo (Top Left)
-        try:
-            logo_path = os.path.join("web", "logo.png")
-            if os.path.exists(logo_path):
-                img = Image.open(logo_path)
-                # Resize to small icon
-                img.thumbnail((200, 50)) # Wider aspect ratio for top left
-                logo_img = ctk.CTkImage(light_image=img, dark_image=img, size=(img.width, img.height))
-                logo_label = ctk.CTkLabel(header_frame, image=logo_img, text="")
-                logo_label.grid(row=0, column=0, sticky="w", padx=5, pady=(0, 10))
-        except Exception as e:
-            print(f"Error loading dashboard logo: {e}")
-        
-        # Quick Deploy Frame
+        # --- Quick Deploy Section ---
         deploy_frame = ctk.CTkFrame(
-            header_frame,
+            self.tab_dashboard,
             fg_color=COLORS["bg_secondary"],
             border_color=COLORS["border"],
             border_width=1,
             corner_radius=10
         )
-        deploy_frame.grid(row=1, column=0, sticky="ew")
+        deploy_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
         
         ctk.CTkLabel(deploy_frame, text="User:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(side="left", padx=10)
         self.user_var = ctk.StringVar()
