@@ -663,6 +663,45 @@ class BotLauncher:
             dropdown_text_color=COLORS["text_primary"]
         )
         self.media_model_combo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
+        
+        # Initialize model lists based on current provider
+        self.on_main_provider_select(self.main_provider_var.get())
+        self.on_media_provider_select(self.media_provider_var.get())
+    
+    def on_main_provider_select(self, provider):
+        """Update main model dropdown based on selected provider"""
+        if provider == "OpenRouter":
+            # Format: "model/path (shortName)"
+            model_options = [f"{full_name} ({short_code})" for full_name, short_code in OPENROUTER_MODELS.items()]
+            self.main_model_combo.configure(values=model_options)
+            # Set saved value if it exists
+            saved_model = self.user_settings.get("main_model", "")
+            if saved_model in model_options:
+                self.main_model_combo.set(saved_model)
+            elif model_options:
+                self.main_model_combo.set(model_options[0])
+        elif provider == "Anthropic":
+            model_options = [f"{full_name} ({short_code})" for full_name, short_code in CLAUDE_MODELS.items()]
+            self.main_model_combo.configure(values=model_options)
+            saved_model = self.user_settings.get("main_model", "")
+            if saved_model in model_options:
+                self.main_model_combo.set(saved_model)
+            elif model_options:
+                self.main_model_combo.set(model_options[0])
+        elif provider == "LMStudio":
+            self.main_model_combo.configure(values=["Local Model"])
+            self.main_model_combo.set("Local Model")
+    
+    def on_media_provider_select(self, provider):
+        """Update media model dropdown based on selected provider"""
+        if provider == "OpenRouter":
+            model_options = [f"{full_name} ({short_code})" for full_name, short_code in OPENROUTER_MODELS.items()]
+            self.media_model_combo.configure(values=model_options)
+            saved_model = self.user_settings.get("media_model", "")
+            if saved_model in model_options:
+                self.media_model_combo.set(saved_model)
+            elif model_options:
+                self.media_model_combo.set(model_options[0])
 
     def update_process_list(self):
         # Clear existing widgets in scrollable frame

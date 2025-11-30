@@ -86,7 +86,18 @@ async def startup_event():
     # We need to initialize them with a session ID. 
     # For now, let's create a default session or load the last one.
     state.replicate_manager = ReplicateManager()
-    state.api_manager = APIManager()
+    
+    # Load LLM settings from user_settings.json
+    llm_settings = None
+    try:
+        if os.path.exists("user_settings.json"):
+            with open("user_settings.json", "r") as f:
+                llm_settings = json.load(f)
+            logger.info(f"Loaded LLM settings: {llm_settings}")
+    except Exception as e:
+        logger.error(f"Failed to load user_settings.json: {e}")
+
+    state.api_manager = APIManager(llm_settings)
     # TTSManager needs character info, so we defer it
     state.tts_manager = None
     

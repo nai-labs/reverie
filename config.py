@@ -38,11 +38,16 @@ CLAUDE_MODELS = {
 OPENROUTER_MODELS = {
     "x-ai/grok-4.1-fast": "grok4.1",
     "deepseek/deepseek-chat-v3-0324": "deep",
+    "deepseek/deepseek-r1-0528-qwen3-8b": "R1qwen3",
+    "deepseek/deepseek-r1-0528": "R1deep",
+    "x-ai/grok-4.1-fast:free": "grok4free",
+    "anthropic/claude-sonnet-4.5": "sonnet4.5",
+    "google/gemini-3-pro-preview": "gemini3"
    
    
    
 }
-OPENROUTER_MODEL = "x-ai/grok-4.1-fast"  
+OPENROUTER_MODEL = "x-ai/grok-4.1-fast:free"  
 OPENROUTER_MAX_TOKENS = 1024
 
 # Anthropic API configuration
