@@ -1,4 +1,3 @@
-# image_manager.py
 import os
 import re
 import logging
@@ -16,15 +15,21 @@ from config import (
     IMAGE_STEPS,
     IMAGE_GUIDANCE_SCALE,
     IMAGE_SAMPLER,
-    DEFAULT_SD_MODEL
+    DEFAULT_SD_MODEL,
+    LUMINA_SD_MODEL,
+    LUMINA_VAE,
+    LUMINA_TEXT_ENCODER,
+    LUMINA_SAMPLER,
+    LUMINA_SCHEDULER,
+    LUMINA_STEPS,
+    LUMINA_CFG_SCALE,
+    LUMINA_SHIFT
 )
-from characters import characters
 from characters import characters
 
 logger = logging.getLogger(__name__)
 
 class ImageManager:
-    # Modified __init__ to accept api_manager
     def __init__(self, conversation_manager, character_name, api_manager):
         self.conversation_manager = conversation_manager
         self.character_name = character_name
@@ -151,7 +156,7 @@ class ImageManager:
             logger.error("Failed to get prompt from media LLM")
             return None
 
-    async def generate_image(self, prompt, first_person_mode=False):
+    async def generate_image(self, prompt, first_person_mode=False, sd_mode="xl"):
         # Determine if we should use ReActor (Face Swap)
         # If first_person_mode is True, we DISABLE ReActor because we want a generic/scene view, not the character's face
         use_reactor = not first_person_mode
@@ -189,17 +194,56 @@ class ImageManager:
             2,  # Maximum number of faces to detect (0 is unlimited)
         ]
 
-        payload = {
-            "sd_model_checkpoint": DEFAULT_SD_MODEL,
-            "prompt": prompt,
-            "steps": IMAGE_STEPS,
-            "sampler_name": IMAGE_SAMPLER,
-            "width": IMAGE_WIDTH,
-            "height": IMAGE_HEIGHT,
-            "seed": -1,
-            "guidance_scale": IMAGE_GUIDANCE_SCALE,
-            "alwayson_scripts": {"reactor": {"args": reactor_args}}
-        }
+        # Build payload based on SD mode
+        logger.info(f"[DEBUG] generate_image received sd_mode='{sd_mode}' (type: {type(sd_mode).__name__})")
+        if sd_mode == "lumina":
+            # Lumina mode: different model, VAE, sampler, scheduler, steps, CFG, and shift
+            # Model and VAE must be in override_settings for Forge to actually load them
+            payload = {
+                "prompt": prompt,
+                "steps": LUMINA_STEPS,
+                "sampler_name": LUMINA_SAMPLER,
+                "scheduler": LUMINA_SCHEDULER,
+                "width": IMAGE_WIDTH,
+                "height": IMAGE_HEIGHT,
+                "seed": -1,
+                "cfg_scale": LUMINA_CFG_SCALE,
+                "alwayson_scripts": {"reactor": {"args": reactor_args}},
+                # Model, VAE, and text encoder in override_settings
+                # GGUF models are smaller, so no memory overrides needed - use Forge defaults
+                "override_settings": {
+                    "sd_model_checkpoint": LUMINA_SD_MODEL,
+                    "sd_vae": LUMINA_VAE,
+                    "forge_additional_modules": [
+                        f"C:\\AI\\ForgeUI\\models\\VAE\\{LUMINA_VAE}",
+                        f"C:\\AI\\ForgeUI\\models\\text_encoder\\{LUMINA_TEXT_ENCODER}"
+                    ]
+                }
+            }
+            logger.info(f"Using Lumina mode for image generation")
+        else:
+            # XL mode (default): standard SDXL settings
+            # Model settings in override_settings to ensure proper switching from Lumina
+            payload = {
+                "prompt": prompt,
+                "steps": IMAGE_STEPS,
+                "sampler_name": IMAGE_SAMPLER,
+                "scheduler": "Karras",
+                "width": IMAGE_WIDTH,
+                "height": IMAGE_HEIGHT,
+                "seed": -1,
+                "cfg_scale": IMAGE_GUIDANCE_SCALE,
+                "alwayson_scripts": {"reactor": {"args": reactor_args}},
+                # Only include model settings to ensure switching from Lumina works
+                # Let Forge use its startup defaults for memory/performance settings
+                "override_settings": {
+                    "sd_model_checkpoint": DEFAULT_SD_MODEL,
+                    "sd_vae": "Automatic",
+                    "forge_additional_modules": [],
+                    "CLIP_stop_at_last_layers": 2
+                }
+            }
+            logger.info(f"Using XL mode for image generation")
 
         logger.info(f"Sending payload to Stable Diffusion: {payload}")
 
@@ -223,7 +267,6 @@ class ImageManager:
         image.save(image_file_path)
         return image_file_path
 
-    # --- NEW FUNCTION START ---
     async def generate_wan_video_prompt(self, conversation):
         """Generates a simple action prompt for the WAN video model based on recent conversation."""
         context = ""
@@ -283,9 +326,7 @@ Example: "A woman is standing by the window looking wistful and sad while touchi
         except Exception as e:
             logger.error(f"Exception generating WAN prompt: {e}", exc_info=True)
             return "A woman is talking expressively" # Fallback prompt
-    # --- NEW FUNCTION END ---
 
-    # This is the original generate_video_prompt function
     async def generate_video_prompt(self, conversation):
         ethnicity_match = re.search(r'\b(?:\d+(?:-year-old)?[\s-]?)?(?:asian|lebanese|black|african|caucasian|white|hispanic|latino|latina|mexican|european|middle eastern|indian|native american|pacific islander|mixed race|biracial|multiracial|[^\s]+?(?=\s+(?:girl|woman|lady|female|man|guy|male|dude)))\b', self.image_prompt, re.IGNORECASE)
         if ethnicity_match:
@@ -347,6 +388,3 @@ Example: "A woman is standing by the window looking wistful and sad while touchi
                     return video_prompt
                 else:
                     return None
-
-    # Removed send_image as it depended on Discord ctx
-    # The server will handle sending the file path or data back to the client

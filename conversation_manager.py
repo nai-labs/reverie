@@ -1,4 +1,3 @@
-# conversation_manager.py
 import os
 import re
 from datetime import datetime
@@ -125,15 +124,7 @@ class ConversationManager:
 
     def set_last_audio_path(self, audio_path):
         self.last_audio_path = audio_path
-        if self.session_id:
-             # We might want to associate media with the last message, but for now just log it or add a system note?
-             # The DB schema has media_path, let's update the last message if it was the bot?
-             # Or just insert a new record for media?
-             # For simplicity, let's just log it as a system event in DB or attach to last bot message?
-             # Let's attach to the last message if possible, or just ignore for now as the requirement was "store messages".
-             # Actually, let's add a specific method in DB or just update the last message's media_path.
-             # But the schema has media_path. Let's assume we want to attach it to the last assistant message.
-             pass 
+        # Note: DB media_path updates could be added here if needed
         self.save_message_to_log("Bot", f"Generated audio: {os.path.basename(audio_path)}")
 
     def get_last_audio_file(self):
@@ -144,9 +135,7 @@ class ConversationManager:
 
     def set_last_selfie_path(self, image_path):
         self.last_selfie_path = image_path
-        if self.session_id:
-            # Similar to audio, we could update the DB.
-            pass
+        # Note: DB media_path updates could be added here if needed
         self.save_message_to_log("Bot", f"Generated selfie: {os.path.basename(image_path)}")
 
     def get_last_selfie_path(self):

@@ -1,4 +1,3 @@
-# config.py
 import os
 from dotenv import load_dotenv
 import logging
@@ -40,7 +39,9 @@ OPENROUTER_MODELS = {
     "deepseek/deepseek-chat-v3-0324": "deep",
     "deepseek/deepseek-r1-0528-qwen3-8b": "R1qwen3",
     "deepseek/deepseek-r1-0528": "R1deep",
+    "deepseek/deepseek-v3.2": "deep.2",
     "x-ai/grok-4.1-fast:free": "grok4free",
+    "mistralai/mistral-large-2512": "mistral",
     "anthropic/claude-sonnet-4.5": "sonnet4.5",
     "google/gemini-3-pro-preview": "gemini3"
    
@@ -116,13 +117,27 @@ ZONOS_URL = os.getenv('ZONOS_URL', 'http://localhost:7860')
 API_TIMEOUT = 300  # seconds
 API_POLL_INTERVAL = 1  # seconds for polling prediction status
 
-# Image generation defaults
+# Retry configuration for transient API failures
+MAX_RETRIES = 3  # Number of retry attempts before giving up
+RETRY_BASE_DELAY = 1.0  # Initial delay in seconds (doubles each retry: 1s, 2s, 4s)
+
+# Image generation defaults (XL Mode)
 IMAGE_WIDTH = 896
 IMAGE_HEIGHT = 1152
 IMAGE_STEPS = 30
-IMAGE_GUIDANCE_SCALE = 7
-IMAGE_SAMPLER = "DPM++ 2M Karras"
+IMAGE_GUIDANCE_SCALE = 4  # CFG Scale from UI
+IMAGE_SAMPLER = "DPM++ 2M SDE"  # Sampler from UI
 DEFAULT_SD_MODEL = "lustifySDXLNSFW_ggwpV7.safetensors"
+
+# Z-Image mode settings (GGUF quantized for better VRAM efficiency)
+LUMINA_SD_MODEL = "z-image-turbo-q4_k_m.gguf"
+LUMINA_VAE = "z_ae.safetensors"
+LUMINA_TEXT_ENCODER = "Qwen3-4B-Q4_K_M.gguf"  # GGUF text encoder
+LUMINA_SAMPLER = "Euler"
+LUMINA_SCHEDULER = "beta"
+LUMINA_STEPS = 8
+LUMINA_CFG_SCALE = 1
+LUMINA_SHIFT = 4.0
 
 # Video generation defaults
 DEFAULT_VIDEO_DURATION = 10  # seconds for Kling videos

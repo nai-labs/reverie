@@ -1,19 +1,35 @@
-# api_manager.py
+import asyncio
 import aiohttp
 import json
 import logging
 from config import (OPENROUTER_URL, ANTHROPIC_URL, OPENROUTER_HEADERS, ANTHROPIC_HEADERS, 
                    OPENROUTER_MODELS, CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL, ANTHROPIC_MAX_TOKENS, 
-                   LMSTUDIO_MAX_TOKENS, DEFAULT_LLM, LMSTUDIO_URL, LMSTUDIO_HEADERS, OPENROUTER_MODEL)
+                   LMSTUDIO_MAX_TOKENS, DEFAULT_LLM, LMSTUDIO_URL, LMSTUDIO_HEADERS, OPENROUTER_MODEL,
+                   MAX_RETRIES, RETRY_BASE_DELAY)
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class APIManager:
+    async def _retry_request(self, request_func, *args, **kwargs):
+        """Wraps an async request with retry logic and exponential backoff."""
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                return await request_func(*args, **kwargs)
+            except aiohttp.ClientError as e:
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(f"Request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Request failed after {MAX_RETRIES} attempts: {e}")
+        raise last_error
+
     def __init__(self, llm_settings=None):
-        # Set defaults first
-        # Set defaults first for main conversation LLM
+        # Set defaults for main conversation LLM
         self.current_llm = DEFAULT_LLM
         self.current_claude_model = DEFAULT_CLAUDE_MODEL
         self.current_openrouter_model = OPENROUTER_MODEL
@@ -54,7 +70,6 @@ class APIManager:
                 else:
                     logger.warning(f"Invalid media provider '{media_provider}' in llm_settings. Using default '{self.media_llm_provider}'.")
 
-    # This is the correct generate_response method
     async def generate_response(self, message, conversation, system_prompt):
         logger.info(f"APIManager: Generating response using LLM: {self.current_llm}") # Added for debugging
         if self.current_llm == "anthropic":
@@ -90,40 +105,49 @@ class APIManager:
         logger.debug(f"Number of messages in conversation: {len(conversation)}")
         logger.debug(f"Number of messages sent to API: {len(messages)}")
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(ANTHROPIC_URL, json=data, headers=headers) as response:
-                    response_json = await response.json()
-                    if response.status == 200:
-                        if 'content' in response_json:
-                            content = response_json['content']
-                            response_text = ""
-                            for item in content:
-                                if item['type'] == 'text':
-                                    response_text += item['text']
-                            
-                            # Log usage information
-                            usage = response_json.get('usage', {})
-                            input_tokens = usage.get('input_tokens', 0)
-                            output_tokens = usage.get('output_tokens', 0)
-                            logger.info(f"Input tokens: {input_tokens}")
-                            logger.info(f"Output tokens: {output_tokens}")
-                            
-                            return response_text.strip()
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(ANTHROPIC_URL, json=data, headers=headers) as response:
+                        response_json = await response.json()
+                        if response.status == 200:
+                            if 'content' in response_json:
+                                content = response_json['content']
+                                response_text = ""
+                                for item in content:
+                                    if item['type'] == 'text':
+                                        response_text += item['text']
+                                
+                                # Log usage information
+                                usage = response_json.get('usage', {})
+                                input_tokens = usage.get('input_tokens', 0)
+                                output_tokens = usage.get('output_tokens', 0)
+                                logger.info(f"Input tokens: {input_tokens}")
+                                logger.info(f"Output tokens: {output_tokens}")
+                                
+                                return response_text.strip()
+                            else:
+                                logger.error("Error: 'content' key not found in the Anthropic API response.")
+                                return "I apologize, but I encountered an error while processing your request."
                         else:
-                            logger.error("Error: 'content' key not found in the Anthropic API response.")
-                    else:
-                        logger.error(f"Error: Anthropic API returned status code {response.status}")
-                        logger.error(f"Response content: {json.dumps(response_json, indent=2)}")
-        except aiohttp.ClientError as e:
-            logger.error(f"Network error in generate_anthropic_response: {str(e)}")
-            return "I'm having trouble connecting to the Anthropic service right now."
-        except Exception as e:
-            logger.error(f"Error in generate_anthropic_response: {str(e)}", exc_info=True)
+                            logger.error(f"Error: Anthropic API returned status code {response.status}")
+                            logger.error(f"Response content: {json.dumps(response_json, indent=2)}")
+                            return "I apologize, but I encountered an error while processing your request."
+            except aiohttp.ClientError as e:
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(f"Anthropic request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"Anthropic request failed after {MAX_RETRIES} attempts: {e}")
+            except Exception as e:
+                logger.error(f"Error in generate_anthropic_response: {str(e)}", exc_info=True)
+                return "I apologize, but I encountered an error while processing your request."
         
-        return "I apologize, but I encountered an error while processing your request."
+        return "I'm having trouble connecting to the Anthropic service right now. Please try again."
 
-    # --- NEW METHOD START ---
     async def generate_media_llm_response(self, system_prompt, user_prompt, max_tokens=128, temperature=0.3):
         """Generates a response using the configured media LLM."""
         logger.info(f"APIManager: Generating media response using LLM: {self.media_llm_provider} ({self.media_llm_model})")
@@ -169,7 +193,6 @@ class APIManager:
         except Exception as e:
             logger.error(f"Exception during Media LLM (OpenRouter) call: {e}", exc_info=True)
             return None # Indicate error
-    # --- NEW METHOD END ---
 
     async def generate_voice_direction(self, text, narration=None, include_narration=False):
         """
@@ -235,29 +258,37 @@ class APIManager:
         logger.debug(f"OpenRouter Request - Model: {self.current_openrouter_model}")
         logger.debug(f"OpenRouter Request - Number of messages: {len(messages)}")
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(OPENROUTER_URL, json=data, headers=OPENROUTER_HEADERS) as response:
-                    response_json = await response.json()
-                    logger.debug(f"OpenRouter Response Status: {response.status}")
-                    logger.debug(f"OpenRouter Response: {json.dumps(response_json, indent=2)}")
-                    
-                    if response.status != 200:
-                        logger.error(f"OpenRouter API Error: {response_json}")
-                        return f"Error: {response_json.get('error', {}).get('message', 'Unknown error')}"
-                    
-                    if 'choices' in response_json and len(response_json['choices']) > 0:
-                        response_text = response_json['choices'][0]['message']['content']
-                        return response_text
-                    else:
-                        logger.error("No choices in OpenRouter response")
-                        return "No response generated - missing choices in response."
-        except aiohttp.ClientError as e:
-            logger.error(f"Network error in generate_openrouter_response: {str(e)}")
-            return "I'm having trouble connecting to the OpenRouter service right now."
-        except Exception as e:
-            logger.error(f"Error in generate_openrouter_response: {str(e)}", exc_info=True)
-            return "I apologize, but I encountered an error while processing your request."
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(OPENROUTER_URL, json=data, headers=OPENROUTER_HEADERS) as response:
+                        response_json = await response.json()
+                        logger.debug(f"OpenRouter Response Status: {response.status}")
+                        logger.debug(f"OpenRouter Response: {json.dumps(response_json, indent=2)}")
+                        
+                        if response.status != 200:
+                            logger.error(f"OpenRouter API Error: {response_json}")
+                            return f"Error: {response_json.get('error', {}).get('message', 'Unknown error')}"
+                        
+                        if 'choices' in response_json and len(response_json['choices']) > 0:
+                            response_text = response_json['choices'][0]['message']['content']
+                            return response_text
+                        else:
+                            logger.error("No choices in OpenRouter response")
+                            return "No response generated - missing choices in response."
+            except aiohttp.ClientError as e:
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(f"OpenRouter request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"OpenRouter request failed after {MAX_RETRIES} attempts: {e}")
+                    return "I'm having trouble connecting to the OpenRouter service right now. Please try again."
+            except Exception as e:
+                logger.error(f"Error in generate_openrouter_response: {str(e)}", exc_info=True)
+                return "I apologize, but I encountered an error while processing your request."
+        
+        return "I'm having trouble connecting to the OpenRouter service right now. Please try again."
 
     async def generate_lmstudio_response(self, message, conversation, system_prompt):
         messages = [
@@ -266,30 +297,38 @@ class APIManager:
             {"role": "user", "content": message}
         ]
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(LMSTUDIO_URL, json={
-                    "model": self.current_lmstudio_model,
-                    "messages": messages,
-                    "max_tokens": LMSTUDIO_MAX_TOKENS,
-                    "temperature": 0.7,
-                }, headers=LMSTUDIO_HEADERS) as response:
-                    if response.status != 200:
-                        logger.error(f"LMStudio API returned status {response.status}")
-                        return "LMStudio service returned an error."
-                        
-                    response_json = await response.json()
-                    if 'choices' in response_json and len(response_json['choices']) > 0:
-                        response_text = response_json['choices'][0]['message']['content']
-                        return response_text
-                    else:
-                        return "No response generated from LMStudio."
-        except aiohttp.ClientError as e:
-            logger.error(f"Network error in generate_lmstudio_response: {str(e)}")
-            return "I cannot connect to the local LMStudio server. Is it running?"
-        except Exception as e:
-            logger.error(f"Error in generate_lmstudio_response: {str(e)}", exc_info=True)
-            return "I encountered an error while communicating with LMStudio."
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(LMSTUDIO_URL, json={
+                        "model": self.current_lmstudio_model,
+                        "messages": messages,
+                        "max_tokens": LMSTUDIO_MAX_TOKENS,
+                        "temperature": 0.7,
+                    }, headers=LMSTUDIO_HEADERS) as response:
+                        if response.status != 200:
+                            logger.error(f"LMStudio API returned status {response.status}")
+                            return "LMStudio service returned an error."
+                            
+                        response_json = await response.json()
+                        if 'choices' in response_json and len(response_json['choices']) > 0:
+                            response_text = response_json['choices'][0]['message']['content']
+                            return response_text
+                        else:
+                            return "No response generated from LMStudio."
+            except aiohttp.ClientError as e:
+                if attempt < MAX_RETRIES - 1:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(f"LMStudio request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(f"LMStudio request failed after {MAX_RETRIES} attempts: {e}")
+                    return "I cannot connect to the local LMStudio server. Is it running?"
+            except Exception as e:
+                logger.error(f"Error in generate_lmstudio_response: {str(e)}", exc_info=True)
+                return "I encountered an error while communicating with LMStudio."
+        
+        return "I cannot connect to the local LMStudio server. Is it running?"
 
     async def fetch_lmstudio_models(self):
         async with aiohttp.ClientSession() as session:
@@ -334,5 +373,3 @@ class APIManager:
                 self.current_llm = "openrouter"
                 return True
         return False
-
-# Removed duplicate get_current_model method that was here

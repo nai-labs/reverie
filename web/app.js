@@ -328,6 +328,7 @@ async function openSettings() {
         document.getElementById('read-narration').checked = data.read_narration;
         document.getElementById('pov-mode').checked = data.pov_mode;
         document.getElementById('first-person-mode').checked = data.first_person_mode;
+        document.getElementById('sd-mode').value = data.sd_mode || 'xl';
 
         settingsModal.classList.remove('hidden');
     } catch (error) {
@@ -342,7 +343,8 @@ async function saveSettings() {
         tts_url: document.getElementById('tts-url').value,
         read_narration: document.getElementById('read-narration').checked,
         pov_mode: document.getElementById('pov-mode').checked,
-        first_person_mode: document.getElementById('first-person-mode').checked
+        first_person_mode: document.getElementById('first-person-mode').checked,
+        sd_mode: document.getElementById('sd-mode').value
     };
 
     try {

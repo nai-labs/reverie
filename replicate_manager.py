@@ -403,7 +403,6 @@ class ReplicateManager:
             logger.error(f"Error in apply_latentsync: {str(e)}", exc_info=True)
             return None
 
-    # --- NEW FUNCTION START ---
     async def generate_wan_video(self, image_path, prompt):
         """Generates a video using the WAN I2V model via the replicate library."""
         logger.info(f"Generating WAN video with image: {image_path} and prompt: '{prompt}'")
@@ -432,7 +431,6 @@ class ReplicateManager:
         except Exception as e:
             logger.error(f"Unexpected error during WAN video generation: {e}", exc_info=True)
             return None
-    # --- NEW FUNCTION END ---
 
     async def generate_omni_human_video(self, image_path, audio_path):
         """Generates a video using the Omni-Human model via the replicate library."""

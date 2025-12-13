@@ -72,10 +72,10 @@ class SettingsRequest(BaseModel):
     system_prompt: Optional[str] = None
     image_prompt: Optional[str] = None
     tts_url: Optional[str] = None
-    tts_url: Optional[str] = None
     read_narration: Optional[bool] = None
     pov_mode: Optional[bool] = None
     first_person_mode: Optional[bool] = None
+    sd_mode: Optional[str] = None  # "xl" or "lumina"
 
 # --- Endpoints ---
 
@@ -295,10 +295,16 @@ async def generate_image():
     # 1. Generate Prompt
     conversation = state.conversation_manager.get_conversation()
     
-    # Get POV mode and First-Person mode settings
+    # Get POV mode, First-Person mode, and SD mode settings
     char_settings = characters.get(state.character_name, {})
     pov_mode = char_settings.get("pov_mode", False)
     first_person_mode = char_settings.get("first_person_mode", False)
+    sd_mode = char_settings.get("sd_mode", "xl")
+    
+    # Debug logging for SD mode
+    logger.info(f"[DEBUG] Character: {state.character_name}")
+    logger.info(f"[DEBUG] char_settings keys: {list(char_settings.keys())}")
+    logger.info(f"[DEBUG] sd_mode from settings: '{sd_mode}'")
     
     prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode, first_person_mode=first_person_mode)
     
@@ -306,8 +312,9 @@ async def generate_image():
         raise HTTPException(status_code=500, detail="Failed to generate image prompt")
         
     # 2. Generate Image
-    # Pass first_person_mode to disable face swap if needed
-    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode)
+    # Pass first_person_mode and sd_mode
+    logger.info(f"[DEBUG] Calling generate_image with sd_mode='{sd_mode}'")
+    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode, sd_mode=sd_mode)
     
     if not image_data:
         raise HTTPException(status_code=500, detail="Failed to generate image")
@@ -400,10 +407,10 @@ async def get_settings():
         "image_prompt": char_data.get("image_prompt", ""),
         "tts_url": char_data.get("tts_url", ""),
         "voice_settings": char_data.get("voice_settings", {}),
-        "voice_settings": char_data.get("voice_settings", {}),
         "read_narration": char_data.get("read_narration", False),
         "pov_mode": char_data.get("pov_mode", False),
-        "first_person_mode": char_data.get("first_person_mode", False)
+        "first_person_mode": char_data.get("first_person_mode", False),
+        "sd_mode": char_data.get("sd_mode", "xl")
     }
 
 @app.post("/api/settings")
@@ -437,6 +444,13 @@ async def update_settings(settings: SettingsRequest):
         
     if settings.first_person_mode is not None:
         characters[state.character_name]["first_person_mode"] = settings.first_person_mode
+    
+    # Debug logging for sd_mode
+    logger.info(f"[DEBUG] update_settings received sd_mode: {settings.sd_mode} (type: {type(settings.sd_mode).__name__ if settings.sd_mode else 'None'})")
+    
+    if settings.sd_mode is not None:
+        characters[state.character_name]["sd_mode"] = settings.sd_mode
+        logger.info(f"[DEBUG] Saved sd_mode='{settings.sd_mode}' to character '{state.character_name}'")
         
     # Save to file
     try:

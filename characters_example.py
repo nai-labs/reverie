@@ -1,4 +1,3 @@
-# characters_example.py
 
 characters = {
     "General": {

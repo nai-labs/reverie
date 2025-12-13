@@ -1,4 +1,3 @@
-# next.py
 import asyncio
 import discord
 from discord.ext import commands
@@ -95,7 +94,6 @@ async def on_error(event, *args, **kwargs):
 @bot.event
 async def on_ready():
     """Event handler for when the bot is ready and connected to Discord."""
-    # global conversation_manager, tts_manager, zonos_manager, image_manager, replicate_manager, hedra_manager, bot_initialized, args
     try:
         logger.info(f'Bot is ready. Logged in as {bot.user.name} (ID: {bot.user.id})')
         logger.info(f'Connected to Discord API successfully')
@@ -232,8 +230,6 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     """Event handler for incoming messages."""
-    # Removed api_manager from globals list
-    # global bot_initialized, conversation_manager, tts_manager, zonos_manager, args
 
     if message.author == bot.user:
         return
@@ -456,8 +452,6 @@ async def say(ctx, *, text: Optional[str] = None):
 
 # Image and Video Commands
 
-# Image and Video Commands
-
 @bot.command()
 async def pic(ctx):
     """Generate a selfie image using local Stable Diffusion."""
@@ -608,15 +602,12 @@ async def set_size_of_image(ctx, value: int):
 async def claude(ctx, model_code=None):
     """Switch or view Claude models."""
     if model_code is None:
-        # Use ctx.bot.api_manager
         current_model = ctx.bot.api_manager.get_current_model()
         available_models = ", ".join([f"{full_name} ({short_code})" for full_name, short_code in CLAUDE_MODELS.items()])
         user = await bot.fetch_user(ctx.bot.args.discord_id)
         await user.send(f"Current Claude model: {current_model}\nAvailable models: {available_models}")
-    # Use ctx.bot.api_manager
     elif ctx.bot.api_manager.switch_claude_model(model_code):
         user = await bot.fetch_user(ctx.bot.args.discord_id)
-        # Use ctx.bot.api_manager
         await user.send(f"Switched to Claude model: {ctx.bot.api_manager.get_current_model()}")
     else:
         user = await bot.fetch_user(ctx.bot.args.discord_id)
@@ -626,15 +617,12 @@ async def claude(ctx, model_code=None):
 async def openrouter(ctx, model_code=None):
     """Switch or view OpenRouter models."""
     if model_code is None:
-        # Use ctx.bot.api_manager
         current_model = ctx.bot.api_manager.get_current_model()
         available_models = ", ".join([f"{full_name} ({short_code})" for full_name, short_code in OPENROUTER_MODELS.items()])
         user = await bot.fetch_user(ctx.bot.args.discord_id)
         await user.send(f"Current OpenRouter model: {current_model}\nAvailable models: {available_models}")
-    # Use ctx.bot.api_manager
     elif ctx.bot.api_manager.switch_openrouter_model(model_code):
         user = await bot.fetch_user(ctx.bot.args.discord_id)
-        # Use ctx.bot.api_manager
         await user.send(f"Switched to OpenRouter model: {ctx.bot.api_manager.get_current_model()}")
     else:
         user = await bot.fetch_user(ctx.bot.args.discord_id)
@@ -644,7 +632,6 @@ async def openrouter(ctx, model_code=None):
 async def lmstudio(ctx, model_name=None):
     """Switch or view LMStudio models."""
     if model_name is None:
-        # Use ctx.bot.api_manager
         models = await ctx.bot.api_manager.fetch_lmstudio_models()
         if models:
             user = await bot.fetch_user(ctx.bot.args.discord_id)
@@ -652,7 +639,6 @@ async def lmstudio(ctx, model_name=None):
         else:
             user = await bot.fetch_user(ctx.bot.args.discord_id)
             await user.send("No LMStudio models available or couldn't fetch the list.")
-    # Use ctx.bot.api_manager
     elif ctx.bot.api_manager.set_lmstudio_model(model_name):
         user = await bot.fetch_user(ctx.bot.args.discord_id)
         await user.send(f"Switched to LMStudio model: {model_name}")
@@ -664,7 +650,6 @@ async def lmstudio(ctx, model_name=None):
 async def llm(ctx, llm_name=None):
     """Switch or view current LLM and model."""
     if llm_name is None:
-        # Use ctx.bot.api_manager
         current_llm = ctx.bot.api_manager.get_current_llm()
         current_model = ctx.bot.api_manager.get_current_model()
         available_llms = "anthropic, openrouter, lmstudio"
