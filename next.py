@@ -60,6 +60,7 @@ from tts_manager import TTSManager
 from image_manager import ImageManager
 from api_manager import APIManager
 from replicate_manager import ReplicateManager
+from wavespeed_manager import WavespeedManager
 
 from characters import characters
 from status_logger import StatusLogger
@@ -144,6 +145,7 @@ async def on_ready():
         # NOW initialize other managers that might depend on api_manager
         bot.image_manager = ImageManager(bot.conversation_manager, args.character, bot.api_manager) # Pass bot.api_manager
         bot.replicate_manager = ReplicateManager()
+        bot.wavespeed_manager = WavespeedManager()
 
 
 
@@ -170,7 +172,10 @@ async def on_ready():
 # 🎙️ Core
 {COMMAND_PREFIX}say  - Generate a voicenote using ElevenLabs
 {COMMAND_PREFIX}pic  - Generate an image based on conversation
-{COMMAND_PREFIX}video - Generate a video from last pic + audio (Wan S2V)
+{COMMAND_PREFIX}video - Video via Wan S2V (Replicate)
+{COMMAND_PREFIX}wavespeed - Video via InfiniteTalk
+{COMMAND_PREFIX}video-fast - Video via InfiniteTalk Fast
+{COMMAND_PREFIX}video-hunyuan - Video via Hunyuan Avatar
 
 # 🛠️ Conversation
 {COMMAND_PREFIX}delete       - Delete the last message
@@ -521,6 +526,128 @@ async def video(ctx):
     except Exception as e:
         logger.error(f"Error in !video command: {e}", exc_info=True)
         await user.send(f"An unexpected error occurred during the !video command: {e}")
+
+@bot.command()
+async def wavespeed(ctx):
+    """Generate a video using Wavespeed InfiniteTalk (requires !pic and !say first)."""
+    if not ctx.bot.conversation_manager or not ctx.bot.wavespeed_manager:
+        user = await bot.fetch_user(ctx.bot.args.discord_id)
+        await user.send("Bot is not fully initialized. Please try again later.")
+        return
+
+    # Get last audio and selfie paths
+    audio_path = ctx.bot.conversation_manager.get_last_audio_file()
+    selfie_path = ctx.bot.conversation_manager.get_last_selfie_path()
+
+    if not audio_path or not selfie_path:
+        user = await bot.fetch_user(ctx.bot.args.discord_id)
+        await user.send("Need both recent audio and selfie. Generate them first using !say and !pic commands.")
+        return
+
+    user = await bot.fetch_user(ctx.bot.args.discord_id)
+    await user.send("Generating video with Wavespeed InfiniteTalk... This may take a while.")
+
+    try:
+        # Generate prompt using ImageManager (reusing the wan prompt generator for expression/pose guidance)
+        prompt = await ctx.bot.image_manager.generate_wan_video_prompt(ctx.bot.conversation_manager.get_conversation())
+        
+        # Generate the video using WavespeedManager
+        video_url = await ctx.bot.wavespeed_manager.generate_infinitetalk_video(
+            selfie_path, 
+            audio_path, 
+            prompt=prompt,
+            resolution="480p"
+        )
+
+        if not video_url:
+            await user.send("Failed to generate video.")
+            return
+
+        # Download and send the video
+        await user.send("Downloading generated video...")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(video_url) as resp:
+                if resp.status == 200:
+                    video_data = await resp.read()
+                    # Save the video
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    video_filename = f"wavespeed_video_{timestamp}.mp4"
+                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, video_filename)
+                    with open(video_path, "wb") as f:
+                        f.write(video_data)
+                    logger.info(f"Wavespeed video saved to: {video_path}")
+                    # Send the video file
+                    await user.send(file=discord.File(video_path))
+                else:
+                    logger.error(f"Failed to download video. Status: {resp.status}, URL: {video_url}")
+                    await user.send(f"Failed to download the generated video (Status: {resp.status}).")
+
+    except Exception as e:
+        logger.error(f"Error in !wavespeed command: {e}", exc_info=True)
+        await user.send(f"An unexpected error occurred during the !wavespeed command: {e}")
+
+async def _generate_wavespeed_video(ctx, model: str, model_name: str):
+    """Helper function to generate video with any Wavespeed model."""
+    if not ctx.bot.conversation_manager or not ctx.bot.wavespeed_manager:
+        user = await bot.fetch_user(ctx.bot.args.discord_id)
+        await user.send("Bot is not fully initialized. Please try again later.")
+        return
+
+    audio_path = ctx.bot.conversation_manager.get_last_audio_file()
+    selfie_path = ctx.bot.conversation_manager.get_last_selfie_path()
+
+    if not audio_path or not selfie_path:
+        user = await bot.fetch_user(ctx.bot.args.discord_id)
+        await user.send("Need both recent audio and selfie. Generate them first using !say and !pic commands.")
+        return
+
+    user = await bot.fetch_user(ctx.bot.args.discord_id)
+    await user.send(f"Generating video with {model_name}... This may take a while.")
+
+    try:
+        prompt = await ctx.bot.image_manager.generate_wan_video_prompt(ctx.bot.conversation_manager.get_conversation())
+        
+        video_url = await ctx.bot.wavespeed_manager.generate_video(
+            selfie_path, 
+            audio_path,
+            model=model,
+            prompt=prompt,
+            resolution="480p"
+        )
+
+        if not video_url:
+            await user.send("Failed to generate video.")
+            return
+
+        await user.send("Downloading generated video...")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(video_url) as resp:
+                if resp.status == 200:
+                    video_data = await resp.read()
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    video_filename = f"{model}_video_{timestamp}.mp4"
+                    video_path = os.path.join(ctx.bot.conversation_manager.subfolder_path, video_filename)
+                    with open(video_path, "wb") as f:
+                        f.write(video_data)
+                    logger.info(f"{model_name} video saved to: {video_path}")
+                    await user.send(file=discord.File(video_path))
+                else:
+                    logger.error(f"Failed to download video. Status: {resp.status}, URL: {video_url}")
+                    await user.send(f"Failed to download the generated video (Status: {resp.status}).")
+
+    except Exception as e:
+        logger.error(f"Error in {model_name} video command: {e}", exc_info=True)
+        await user.send(f"An unexpected error occurred: {e}")
+
+@bot.command(name="video-fast")
+async def video_fast(ctx):
+    """Generate a video using Wavespeed InfiniteTalk Fast (faster, slightly lower quality)."""
+    await _generate_wavespeed_video(ctx, "infinitetalk-fast", "InfiniteTalk Fast")
+
+@bot.command(name="video-hunyuan")
+async def video_hunyuan(ctx):
+    """Generate a video using Hunyuan Avatar (emotion-aware, max 2 min)."""
+    await _generate_wavespeed_video(ctx, "hunyuan-avatar", "Hunyuan Avatar")
 
 # Replicate Manager Commands
 

@@ -17,6 +17,7 @@ from database_manager import DatabaseManager
 from api_manager import APIManager
 from image_manager import ImageManager
 from replicate_manager import ReplicateManager
+from wavespeed_manager import WavespeedManager
 from tts_manager import TTSManager
 from config import (
     DISCORD_BOT_TOKEN, # We might not need this, but config imports it
@@ -54,6 +55,7 @@ class AppState:
         self.api_manager = None
         self.image_manager = None
         self.replicate_manager = None
+        self.wavespeed_manager = None
         self.tts_manager = None
         self.user_id = "web_user" # Default user ID for web
         self.character_name = "Anika" # Default character
@@ -86,6 +88,7 @@ async def startup_event():
     # We need to initialize them with a session ID. 
     # For now, let's create a default session or load the last one.
     state.replicate_manager = ReplicateManager()
+    state.wavespeed_manager = WavespeedManager()
     
     # Load LLM settings from user_settings.json
     llm_settings = None
@@ -394,6 +397,73 @@ async def generate_video():
     return {
         "video_url": f"/{relative_path}",
         "prompt": prompt
+    }
+
+@app.post("/api/generate/video/wavespeed")
+async def generate_video_wavespeed(model: str = "infinitetalk"):
+    """Generate video with specified model. Options: wan, infinitetalk, infinitetalk-fast, hunyuan-avatar"""
+    
+    # 1. Get Inputs (Last Image and Audio)
+    image_path = state.conversation_manager.get_last_selfie_path()
+    audio_path = state.conversation_manager.get_last_audio_file()
+    
+    if not image_path or not os.path.exists(image_path):
+        raise HTTPException(status_code=400, detail="No recent image found. Please generate an image first.")
+        
+    if not audio_path or not os.path.exists(audio_path):
+        raise HTTPException(status_code=400, detail="No recent audio found. Please generate audio first.")
+
+    # 2. Generate Prompt
+    conversation = state.conversation_manager.get_conversation()
+    prompt = await state.image_manager.generate_wan_video_prompt(conversation)
+    
+    # 3. Generate Video based on model selection
+    video_url = None
+    
+    if model == "wan":
+        # Use Replicate WAN S2V
+        if not state.replicate_manager:
+            raise HTTPException(status_code=400, detail="Replicate manager not initialized")
+        output = await state.replicate_manager.generate_wan_s2v_video(image_path, audio_path, prompt)
+        video_url = output[0] if isinstance(output, list) else output
+    else:
+        # Use Wavespeed models
+        if not state.wavespeed_manager:
+            raise HTTPException(status_code=400, detail="Wavespeed manager not initialized")
+        video_url = await state.wavespeed_manager.generate_video(
+            image_path, 
+            audio_path,
+            model=model,
+            prompt=prompt,
+            resolution="480p"
+        )
+    
+    if not video_url:
+        raise HTTPException(status_code=500, detail=f"Failed to generate video with {model}")
+    
+    # 4. Download Video
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(video_url) as resp:
+            if resp.status == 200:
+                video_data = await resp.read()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                video_filename = f"{model}_video_{timestamp}.mp4"
+                video_path = os.path.join(state.conversation_manager.subfolder_path, video_filename)
+                
+                with open(video_path, "wb") as f:
+                    f.write(video_data)
+            else:
+                raise HTTPException(status_code=500, detail="Failed to download generated video")
+    
+    # 5. Return relative path
+    relative_path = os.path.relpath(video_path, start=os.getcwd())
+    relative_path = relative_path.replace("\\", "/")
+    
+    return {
+        "video_url": f"/{relative_path}",
+        "prompt": prompt,
+        "model": model
     }
 
 @app.get("/api/settings")

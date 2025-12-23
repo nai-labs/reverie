@@ -43,7 +43,8 @@ OPENROUTER_MODELS = {
     "x-ai/grok-4.1-fast:free": "grok4free",
     "mistralai/mistral-large-2512": "mistral",
     "anthropic/claude-sonnet-4.5": "sonnet4.5",
-    "google/gemini-3-pro-preview": "gemini3"
+    "z-ai/glm-4.7": "glm4.7",
+    "google/gemini-3-flash-preview": "gemini3"
    
    
    
@@ -101,6 +102,10 @@ INSIGHTFACE_MODEL_PATH = os.getenv("INSIGHTFACE_MODEL_PATH", './models/insightfa
 
 # Replicate API configuration
 REPLICATE_API_TOKEN = os.getenv('REPLICATE_API_TOKEN')
+
+# Wavespeed API configuration
+WAVESPEED_API_KEY = os.getenv('WAVESPEED_API_KEY')
+WAVESPEED_API_URL = 'https://api.wavespeed.ai/api/v3'
 
 # Hedra API configuration
 HEDRA_API_KEY = os.getenv('HEDRA_API_KEY')

@@ -308,6 +308,41 @@ button {
     border-color: rgba(255, 255, 255, 0.2);
 }
 
+.video-select {
+    background: var(--glass-panel);
+    color: var(--text-secondary);
+    border: 1px solid var(--glass-border);
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.3s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+}
+
+.video-select:hover {
+    background-color: var(--glass-highlight);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.video-select:focus {
+    outline: none;
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
+.video-select option {
+    background: #1e293b;
+    color: var(--text-primary);
+    padding: 8px;
+}
+
 /* Modal */
 .modal {
     position: fixed;

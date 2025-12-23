@@ -12,6 +12,7 @@ const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const genImageBtn = document.getElementById('gen-image-btn');
 const genVideoBtn = document.getElementById('gen-video-btn');
+const videoModelSelect = document.getElementById('video-model-select');
 const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const closeSettingsBtn = document.getElementById('close-settings-btn');
@@ -304,9 +305,12 @@ async function generateImage() {
 }
 
 async function generateVideo() {
-    addSystemMessage('Generating video (this may take a minute)...');
+    const model = videoModelSelect ? videoModelSelect.value : 'infinitetalk';
+    const modelName = videoModelSelect ? videoModelSelect.options[videoModelSelect.selectedIndex].text : 'InfiniteTalk';
+
+    addSystemMessage(`Generating video with ${modelName} (this may take a few minutes)...`);
     try {
-        const response = await fetch(`${API_BASE}/generate/video`, { method: 'POST' });
+        const response = await fetch(`${API_BASE}/generate/video/wavespeed?model=${model}`, { method: 'POST' });
         if (!response.ok) throw new Error('Generation failed');
         const data = await response.json();
         addVideo(data.video_url, data.prompt);
