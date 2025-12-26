@@ -3,7 +3,9 @@ import re
 import logging
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
+import zipfile
+import io
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -22,7 +24,9 @@ from tts_manager import TTSManager
 from config import (
     DISCORD_BOT_TOKEN, # We might not need this, but config imports it
     COMMAND_PREFIX,
-    characters
+    characters,
+    USE_NGROK,
+    NGROK_AUTH_TOKEN
 )
 
 # Setup logging
@@ -104,8 +108,32 @@ async def startup_event():
     # TTSManager needs character info, so we defer it
     state.tts_manager = None
     
+    # Load imported characters into the global characters dict
+    try:
+        import json
+        if os.path.exists("imported_characters.json"):
+            with open("imported_characters.json", "r", encoding="utf-8") as f:
+                imported = json.load(f)
+            characters.update(imported)
+            logger.info(f"Loaded {len(imported)} imported characters: {list(imported.keys())}")
+    except Exception as e:
+        logger.error(f"Failed to load imported characters: {e}")
+    
     # We defer conversation_manager init until we know the user/character
     logger.info("Managers initialized.")
+
+    # Setup Ngrok if enabled
+    if USE_NGROK and NGROK_AUTH_TOKEN:
+        try:
+            from pyngrok import ngrok
+            ngrok.set_auth_token(NGROK_AUTH_TOKEN)
+            public_url = ngrok.connect(8000).public_url
+            logger.info(f"Public link created: {public_url}")
+            # Write URL to a file for the launcher to read
+            with open("latest_public_url.txt", "w") as f:
+                f.write(public_url)
+        except Exception as e:
+            logger.error(f"Failed to start Ngrok: {e}")
 
 @app.post("/api/init")
 async def init_session(request: InitRequest):
@@ -342,6 +370,64 @@ async def generate_image():
         "prompt": prompt
     }
 
+@app.post("/api/generate/image/direct")
+async def generate_image_direct():
+    """Generate image using prompt extracted directly from the last bot message's delimited text."""
+    if not state.image_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    # 1. Get the last bot message
+    conversation = state.conversation_manager.get_conversation()
+    bot_messages = [msg["content"] for msg in conversation if msg["role"] == "assistant"]
+    
+    if not bot_messages:
+        raise HTTPException(status_code=400, detail="No bot messages found to extract prompt from")
+    
+    last_message = bot_messages[-1]
+    
+    # 2. Extract delimited text from the end of the message
+    # Look for text between | | or [ ] at the end (with optional markdown chars like * _ ~)
+    prompt = None
+    
+    # Try pipe delimiters first (handles *|...|* or just |...|)
+    # Allow optional markdown formatting chars before/after the pipes
+    pipe_match = re.search(r'[*_~]*\|([^|]+)\|[*_~]*\s*$', last_message)
+    if pipe_match:
+        prompt = pipe_match.group(1).strip()
+    else:
+        # Try square brackets (handles *[...]* or just [...])
+        bracket_match = re.search(r'[*_~]*\[([^\]]+)\][*_~]*\s*$', last_message)
+        if bracket_match:
+            prompt = bracket_match.group(1).strip()
+    
+    if not prompt:
+        raise HTTPException(status_code=400, detail="No delimited prompt found in the last message. Expected text between | | or [ ] at the end.")
+    
+    logger.info(f"[Direct Image] Extracted prompt: {prompt[:100]}...")
+    
+    # 3. Get settings
+    char_settings = characters.get(state.character_name, {})
+    first_person_mode = char_settings.get("first_person_mode", False)
+    sd_mode = char_settings.get("sd_mode", "xl")
+    
+    # 4. Generate Image (same as regular flow, just with extracted prompt)
+    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode, sd_mode=sd_mode)
+    
+    if not image_data:
+        raise HTTPException(status_code=500, detail="Failed to generate image")
+    
+    # 5. Save Image
+    image_path = await state.image_manager.save_image(image_data)
+    state.conversation_manager.set_last_selfie_path(image_path)
+    
+    relative_path = os.path.relpath(image_path, start=os.getcwd())
+    relative_path = relative_path.replace("\\", "/")
+    
+    return {
+        "image_url": f"/{relative_path}",
+        "prompt": prompt
+    }
+
 @app.post("/api/generate/video")
 async def generate_video():
     if not state.replicate_manager:
@@ -482,6 +568,129 @@ async def get_settings():
         "first_person_mode": char_data.get("first_person_mode", False),
         "sd_mode": char_data.get("sd_mode", "xl")
     }
+
+@app.get("/api/export")
+async def export_conversation():
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    try:
+        history = state.conversation_manager.get_conversation()
+        if not history:
+            raise HTTPException(status_code=400, detail="No conversation to export")
+            
+        # Create ZIP in memory
+        zip_io = io.BytesIO()
+        with zipfile.ZipFile(zip_io, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            conversation_text = ""
+            
+            # Build conversation text
+            for i, msg in enumerate(history, 1):
+                role = msg["role"].capitalize()
+                content = msg["content"]
+                conversation_text += f"[{i:03d}] [{role}]: {content}\n\n"
+            
+            # Add conversation text log
+            zip_file.writestr("conversation_log.txt", conversation_text)
+            
+            # Get ALL media files from the session folder, sorted by creation time
+            subfolder = state.conversation_manager.subfolder_path
+            media_extensions = ('.png', '.jpg', '.jpeg', '.mp3', '.mp4', '.wav')
+            all_files = []
+            for f in os.listdir(subfolder):
+                if f.endswith(media_extensions):
+                    full_path = os.path.join(subfolder, f)
+                    all_files.append((f, full_path, os.path.getctime(full_path)))
+            
+            # Sort by creation time (chronological order)
+            all_files.sort(key=lambda x: x[2])
+            
+            # Add files to ZIP with sequential prefixes
+            for i, (filename, full_path, _) in enumerate(all_files, 1):
+                new_filename = f"{i:03d}_{filename}"
+                zip_file.write(full_path, arcname=new_filename)
+            
+            # Generate standalone gallery.html
+            gallery_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Reverie Export - {state.character_name}</title>
+    <style>
+        body {{ font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; max-width: 900px; margin: 0 auto; padding: 20px; }}
+        h1 {{ text-align: center; color: #0ea5e9; }}
+        .message {{ margin-bottom: 20px; padding: 15px; border-radius: 10px; background: #1e293b; border: 1px solid #334155; }}
+        .user {{ border-left: 5px solid #0ea5e9; }}
+        .assistant {{ border-left: 5px solid #6366f1; }}
+        .role {{ font-weight: bold; margin-bottom: 5px; color: #94a3b8; }}
+        .content {{ line-height: 1.5; white-space: pre-wrap; }}
+        .media-section {{ margin-top: 30px; padding-top: 20px; border-top: 1px solid #334155; }}
+        .media-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }}
+        .media-item {{ background: #1e293b; padding: 10px; border-radius: 8px; }}
+        .media-item img, .media-item video {{ width: 100%; border-radius: 5px; }}
+        .media-item audio {{ width: 100%; }}
+        .media-label {{ font-size: 12px; color: #94a3b8; margin-top: 5px; }}
+    </style>
+</head>
+<body>
+    <h1>Conversation with {state.character_name}</h1>
+    <div id="chat">
+"""
+            # Add conversation messages
+            for i, msg in enumerate(history, 1):
+                role = msg["role"]
+                content = msg["content"].replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
+                css_class = role
+                display_role = "You" if role == "user" else state.character_name
+                
+                gallery_html += f"""
+        <div class="message {css_class}">
+            <div class="role">{display_role}</div>
+            <div class="content">{content}</div>
+        </div>
+"""
+            
+            # Add media gallery section
+            gallery_html += """
+    </div>
+    <div class="media-section">
+        <h2>📸 Media Gallery</h2>
+        <div class="media-grid">
+"""
+            for i, (filename, _, _) in enumerate(all_files, 1):
+                zip_filename = f"{i:03d}_{filename}"
+                if filename.endswith(('.png', '.jpg', '.jpeg')):
+                    gallery_html += f'<div class="media-item"><img src="{zip_filename}"><div class="media-label">{zip_filename}</div></div>\n'
+                elif filename.endswith('.mp3') or filename.endswith('.wav'):
+                    gallery_html += f'<div class="media-item"><audio controls src="{zip_filename}"></audio><div class="media-label">{zip_filename}</div></div>\n'
+                elif filename.endswith('.mp4'):
+                    gallery_html += f'<div class="media-item"><video controls src="{zip_filename}"></video><div class="media-label">{zip_filename}</div></div>\n'
+            
+            gallery_html += """
+        </div>
+    </div>
+</body>
+</html>
+"""
+            zip_file.writestr("index.html", gallery_html)
+
+        zip_io.seek(0)
+        filename = f"reverie_export_{state.character_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        
+        def iter_file():
+            yield zip_io.getvalue()
+            
+        return StreamingResponse(
+            iter_file(), 
+            media_type="application/x-zip-compressed",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"Export failed: {e}")
+        import traceback
+        with open("server_debug.log", "a") as f:
+            f.write(f"\n[{datetime.now()}] Export Error: {e}\n{traceback.format_exc()}\n")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/api/settings")
 async def update_settings(settings: SettingsRequest):

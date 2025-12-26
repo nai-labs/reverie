@@ -27,6 +27,7 @@ python-dateutil==2.8.2
 requests==2.31.0
 typing-extensions>=4.5.0  # Required for better type hints
 psutil>=5.9.0  # Required for process management
+pyngrok==7.1.2  # Required for Ngrok tunneling
 
 # Media
 playsound==1.3.0

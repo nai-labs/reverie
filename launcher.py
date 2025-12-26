@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import sys
 import json
 import subprocess
@@ -14,8 +14,9 @@ import winsound
 import threading
 from users import users, list_users
 from characters import characters
-from config import CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL
+from config import CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_STEPS, IMAGE_GUIDANCE_SCALE, IMAGE_SAMPLER, DEFAULT_SD_MODEL
 from database_manager import DatabaseManager
+from chub_importer import ChubImporter
 
 # Set theme to match web UI (Glassmorphism Premium)
 ctk.set_appearance_mode("Dark")
@@ -269,10 +270,18 @@ class BotLauncher:
         y = (screen_height - window_height) // 2
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         
+        # Start maximized on Windows
+        self.root.state('zoomed')
+        
         self.processes = []
         self.conversation_windows = {}
         self.db = DatabaseManager()
+        self.chub_importer = ChubImporter()
         self.user_settings = self.load_user_settings()
+        
+        # Load imported characters into the characters dict
+        imported = self.chub_importer.load_imported()
+        characters.update(imported)
         
         # Main Layout
         self.root.grid_columnconfigure(0, weight=1)
@@ -381,6 +390,18 @@ class BotLauncher:
         # Load saved password
         saved_pass = self.user_settings.get("remote_password", "")
         self.password_entry.insert(0, saved_pass)
+
+        self.use_ngrok_var = ctk.BooleanVar(value=self.user_settings.get("use_ngrok", False))
+        self.use_ngrok_chk = ctk.CTkCheckBox(
+            deploy_frame,
+            text="Public Link",
+            variable=self.use_ngrok_var,
+            font=("Segoe UI", 12, "bold"),
+            text_color=COLORS["text_primary"],
+            fg_color=COLORS["accent_cyan"],
+            hover_color=COLORS["accent_purple"]
+        )
+        self.use_ngrok_chk.pack(side="left", padx=10)
         
         self.deploy_btn = ctk.CTkButton(
             deploy_frame,
@@ -393,6 +414,31 @@ class BotLauncher:
         )
         self.deploy_btn.pack(side="left", padx=20)
         
+        # Import Character Button
+        self.import_btn = ctk.CTkButton(
+            deploy_frame,
+            text="Import Character",
+            command=self.import_chub_character,
+            fg_color=COLORS["input_bg"],
+            hover_color=COLORS["hover"],
+            border_color=COLORS["border"],
+            border_width=1,
+            text_color=COLORS["text_primary"],
+            font=("Segoe UI", 11)
+        )
+        self.import_btn.pack(side="left", padx=5)
+        
+        # Delete Imported Character Button
+        self.delete_char_btn = ctk.CTkButton(
+            deploy_frame,
+            text="Delete Character",
+            command=self.delete_imported_character,
+            fg_color=COLORS["error"],
+            hover_color="#dc2626",
+            text_color="white",
+            font=("Segoe UI", 11)
+        )
+        self.delete_char_btn.pack(side="left", padx=5)
         # --- Process Monitor Section ---
         ctk.CTkLabel(
             self.tab_dashboard,
@@ -663,7 +709,36 @@ class BotLauncher:
             dropdown_text_color=COLORS["text_primary"]
         )
         self.media_model_combo.grid(row=2, column=1, sticky="ew", padx=10, pady=10)
-        
+
+        # Ngrok Settings
+        ngrok_frame = ctk.CTkFrame(
+            self.tab_llm,
+            fg_color=COLORS["bg_secondary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            corner_radius=10
+        )
+        ngrok_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=20, pady=20)
+        ngrok_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            ngrok_frame,
+            text="Ngrok Configuration",
+            font=("Segoe UI", 14, "bold"),
+            text_color=COLORS["text_primary"]
+        ).grid(row=0, column=0, columnspan=2, pady=10)
+
+        ctk.CTkLabel(ngrok_frame, text="Auth Token:", text_color=COLORS["text_primary"]).grid(row=1, column=0, padx=10, pady=10)
+        self.ngrok_token_entry = ctk.CTkEntry(
+            ngrok_frame,
+            show="*",
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"]
+        )
+        self.ngrok_token_entry.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
+        self.ngrok_token_entry.insert(0, self.user_settings.get("ngrok_auth_token", ""))
+
         # Initialize model lists based on current provider
         self.on_main_provider_select(self.main_provider_var.get())
         self.on_media_provider_select(self.media_provider_var.get())
@@ -780,9 +855,20 @@ class BotLauncher:
             webbrowser.open(f"http://localhost:8000?{query_params}")
             
             # Use cmd /k to keep window open on error for debugging
+            env = os.environ.copy()
+            env["USE_NGROK"] = "true" if self.use_ngrok_var.get() else "false"
+            env["NGROK_AUTH_TOKEN"] = self.ngrok_token_entry.get()
+            
+            # Save settings
+            self.user_settings["use_ngrok"] = self.use_ngrok_var.get()
+            self.user_settings["ngrok_auth_token"] = self.ngrok_token_entry.get()
+            self.user_settings["remote_password"] = self.password_entry.get()
+            with open("user_settings.json", "w") as f:
+                json.dump(self.user_settings, f, indent=4)
+
             if os.name == 'nt':
                 cmd = ["cmd", "/k", sys.executable, "server.py"]
-                process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+                process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE, env=env)
             else:
                 cmd = [sys.executable, "server.py"]
                 process = subprocess.Popen(cmd, preexec_fn=os.setsid)
@@ -894,6 +980,608 @@ class BotLauncher:
 
     def on_media_provider_select(self, choice):
         self.update_media_model_list()
+
+    def import_chub_character(self):
+        """Import a character from a Chub.ai JSON file with enhanced dialog."""
+        # Open file picker
+        file_path = filedialog.askopenfilename(
+            title="Select Chub Character Card",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            # Parse the Chub card
+            chub_data = self.chub_importer.parse(file_path)
+            char_name = chub_data.get('name', 'Unknown')
+            
+            # Get scenario options
+            scenario_options = self.chub_importer.get_scenario_options(chub_data)
+            
+            # If no scenarios exist, generate some with LLM
+            if not scenario_options or scenario_options == ["No scenarios available"]:
+                scenario_options = ["⏳ Generating scenarios with LLM..."]
+                needs_scenario_generation = True
+            else:
+                needs_scenario_generation = False
+            
+            # Create enhanced import dialog
+            dialog = ctk.CTkToplevel(self.root)
+            dialog.title(f"Import: {char_name}")
+            dialog.geometry("900x750")
+            dialog.transient(self.root)
+            dialog.grab_set()
+            dialog.configure(fg_color=COLORS["bg_primary"])
+            
+            # Center dialog
+            dialog.update_idletasks()
+            x = (dialog.winfo_screenwidth() - 900) // 2
+            y = (dialog.winfo_screenheight() - 750) // 2
+            dialog.geometry(f"+{x}+{y}")
+            
+            # Main scrollable container
+            main_frame = ctk.CTkScrollableFrame(
+                dialog,
+                fg_color=COLORS["bg_secondary"],
+                scrollbar_button_color=COLORS["accent_cyan"]
+            )
+            main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+            
+            # Character name header
+            ctk.CTkLabel(
+                main_frame,
+                text=f"Importing: {char_name}",
+                font=("Segoe UI", 20, "bold"),
+                text_color=COLORS["text_primary"]
+            ).pack(pady=(10, 20))
+            
+            # --- System Prompt Preview (Scrollable) ---
+            ctk.CTkLabel(
+                main_frame,
+                text="Character Description (System Prompt Preview):",
+                font=("Segoe UI", 12, "bold"),
+                text_color=COLORS["text_primary"]
+            ).pack(anchor="w", padx=10)
+            
+            desc_textbox = ctk.CTkTextbox(
+                main_frame,
+                height=150,
+                fg_color=COLORS["input_bg"],
+                border_color=COLORS["border"],
+                border_width=1,
+                text_color=COLORS["text_secondary"],
+                wrap="word"
+            )
+            desc_textbox.pack(fill="x", padx=10, pady=(5, 15))
+            desc_textbox.insert("1.0", chub_data.get('description', 'No description available'))
+            desc_textbox.configure(state="disabled")
+            
+            # --- Image Prompt (Editable) ---
+            ctk.CTkLabel(
+                main_frame,
+                text="Image Prompt (for selfie generation):",
+                font=("Segoe UI", 12, "bold"),
+                text_color=COLORS["text_primary"]
+            ).pack(anchor="w", padx=10)
+            
+            image_prompt_textbox = ctk.CTkTextbox(
+                main_frame,
+                height=60,
+                fg_color=COLORS["input_bg"],
+                border_color=COLORS["border"],
+                border_width=1,
+                text_color=COLORS["text_primary"],
+                wrap="word"
+            )
+            image_prompt_textbox.pack(fill="x", padx=10, pady=(5, 5))
+            image_prompt_textbox.insert("1.0", "Generating image prompt...")
+            
+            # Status label for LLM generation
+            status_label = ctk.CTkLabel(
+                main_frame,
+                text="⏳ Generating image prompt with LLM...",
+                text_color=COLORS["accent_cyan"],
+                font=("Segoe UI", 10)
+            )
+            status_label.pack(anchor="w", padx=10, pady=(0, 10))
+            
+            # --- Reference Image Section ---
+            ref_frame = ctk.CTkFrame(main_frame, fg_color=COLORS["bg_primary"])
+            ref_frame.pack(fill="x", padx=10, pady=10)
+            
+            ctk.CTkLabel(
+                ref_frame,
+                text="Reference Image (for face swap):",
+                font=("Segoe UI", 12, "bold"),
+                text_color=COLORS["text_primary"]
+            ).pack(anchor="w", padx=10, pady=(10, 5))
+            
+            # Image preview placeholder
+            ref_image_label = ctk.CTkLabel(
+                ref_frame,
+                text="No reference image yet.\nClick 'Generate Preview' after the image prompt is ready.",
+                width=200,
+                height=200,
+                fg_color=COLORS["input_bg"],
+                corner_radius=10,
+                text_color=COLORS["text_secondary"]
+            )
+            ref_image_label.pack(pady=10)
+            
+            # Store reference for the generated image path
+            ref_image_path = {"path": None}
+            photo_ref = {"photo": None}  # Keep reference to prevent garbage collection
+            
+            def generate_reference_image():
+                """Generate a reference portrait image using Stable Diffusion."""
+                import aiohttp
+                import asyncio
+                import base64
+                from PIL import Image
+                import io
+                
+                prompt = image_prompt_textbox.get("1.0", "end-1c").strip()
+                if not prompt or "Generating" in prompt:
+                    messagebox.showwarning("Wait", "Please wait for the image prompt to be generated first.")
+                    return
+                
+                # Update status
+                ref_image_label.configure(text="⏳ Generating reference image...")
+                dialog.update()
+                
+                async def generate():
+                    # Portrait prompt - selfie-style for face swap reference
+                    portrait_prompt = f"amateur selfie photo of {prompt}, looking at camera, natural lighting, upper body visible, casual pose, high quality"
+                    
+                    # Use XL mode params from config with model override
+                    payload = {
+                        "prompt": portrait_prompt,
+                        "steps": IMAGE_STEPS,
+                        "sampler_name": IMAGE_SAMPLER,
+                        "scheduler": "Karras",
+                        "width": IMAGE_WIDTH,
+                        "height": IMAGE_HEIGHT,
+                        "seed": -1,
+                        "cfg_scale": IMAGE_GUIDANCE_SCALE,
+                        "override_settings": {
+                            "sd_model_checkpoint": DEFAULT_SD_MODEL,
+                            "sd_vae": "Automatic",
+                            "forge_additional_modules": [],
+                            "CLIP_stop_at_last_layers": 2
+                        }
+                    }
+                    
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(
+                                "http://127.0.0.1:7860/sdapi/v1/txt2img",
+                                json=payload,
+                                headers={'Content-Type': 'application/json'},
+                                timeout=aiohttp.ClientTimeout(total=120)
+                            ) as response:
+                                if response.status == 200:
+                                    r = await response.json()
+                                    if 'images' in r and len(r['images']) > 0:
+                                        return r['images'][0]
+                    except Exception as e:
+                        print(f"Error generating reference image: {e}")
+                    return None
+                
+                # Run async generation
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    image_data = loop.run_until_complete(generate())
+                finally:
+                    loop.close()
+                
+                if image_data:
+                    # Decode and display
+                    image_bytes = base64.b64decode(image_data)
+                    image = Image.open(io.BytesIO(image_bytes))
+                    
+                    # Save to faces folder
+                    safe_name = "".join(c for c in char_name if c.isalnum() or c in (' ', '_')).strip().replace(' ', '_')
+                    faces_folder = f"E:\\dll\\Faces_m\\{safe_name}"
+                    os.makedirs(faces_folder, exist_ok=True)
+                    
+                    image_path = os.path.join(faces_folder, "reference_1.png")
+                    image.save(image_path)
+                    ref_image_path["path"] = faces_folder
+                    
+                    # Display thumbnail in dialog
+                    display_image = image.copy()
+                    display_image.thumbnail((200, 200))
+                    photo = ImageTk.PhotoImage(display_image)
+                    photo_ref["photo"] = photo  # Keep reference
+                    ref_image_label.configure(image=photo, text="")
+                    
+                    status_label.configure(text=f"✅ Reference image saved to: {faces_folder}")
+                else:
+                    ref_image_label.configure(text="❌ Failed to generate.\nIs Stable Diffusion running?")
+            
+            generate_ref_btn = ctk.CTkButton(
+                ref_frame,
+                text="Generate Preview",
+                command=lambda: threading.Thread(target=generate_reference_image, daemon=True).start(),
+                fg_color=COLORS["accent_purple"],
+                hover_color=COLORS["accent_cyan"]
+            )
+            generate_ref_btn.pack(pady=(0, 10))
+            
+            # --- Scenario Selection ---
+            ctk.CTkLabel(
+                main_frame,
+                text="Select Starting Scenario:",
+                font=("Segoe UI", 12, "bold"),
+                text_color=COLORS["text_primary"]
+            ).pack(anchor="w", padx=10, pady=(15, 5))
+            
+            scenario_combo = ctk.CTkComboBox(
+                main_frame,
+                values=[f"{i}: {opt[:60]}..." for i, opt in enumerate(scenario_options)],
+                width=850,
+                fg_color=COLORS["input_bg"],
+                border_color=COLORS["border"],
+                text_color=COLORS["text_primary"],
+                dropdown_fg_color=COLORS["bg_secondary"],
+                dropdown_text_color=COLORS["text_primary"]
+            )
+            scenario_combo.pack(padx=10, pady=5)
+            if scenario_options:
+                scenario_combo.set(f"0: {scenario_options[0][:60]}...")
+            
+            # Scenario preview (scrollable)
+            scenario_preview = ctk.CTkTextbox(
+                main_frame,
+                height=100,
+                fg_color=COLORS["input_bg"],
+                border_color=COLORS["border"],
+                border_width=1,
+                text_color=COLORS["text_secondary"],
+                wrap="word"
+            )
+            scenario_preview.pack(fill="x", padx=10, pady=(5, 15))
+            if scenario_options:
+                scenario_preview.insert("1.0", scenario_options[0])
+            scenario_preview.configure(state="disabled")
+            
+            def on_scenario_change(choice):
+                try:
+                    idx = int(choice.split(":")[0])
+                    if idx < len(scenario_options):
+                        scenario_preview.configure(state="normal")
+                        scenario_preview.delete("1.0", "end")
+                        scenario_preview.insert("1.0", scenario_options[idx])
+                        scenario_preview.configure(state="disabled")
+                except:
+                    pass
+            
+            scenario_combo.configure(command=on_scenario_change)
+            
+            # --- Import Button ---
+            def do_import():
+                # Get selected scenario index
+                selected = scenario_combo.get()
+                try:
+                    scenario_idx = int(selected.split(":")[0])
+                except:
+                    scenario_idx = 0
+                
+                # Get edited image prompt
+                final_image_prompt = image_prompt_textbox.get("1.0", "end-1c").strip()
+                
+                # Get source faces folder
+                source_folder = ref_image_path["path"] if ref_image_path["path"] else ""
+                
+                # Convert and save with custom image prompt and source folder
+                converted = self.chub_importer.convert(chub_data, scenario_idx)
+                # Update with user edits
+                char_key = list(converted.keys())[0]
+                converted[char_key]["image_prompt"] = final_image_prompt
+                if source_folder:
+                    converted[char_key]["source_faces_folder"] = source_folder
+                
+                self.chub_importer.save(converted)
+                
+                # Refresh character dropdown
+                self.refresh_character_list()
+                
+                dialog.destroy()
+                messagebox.showinfo("Success", f"Character '{char_name}' imported successfully!")
+            
+            btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+            btn_frame.pack(pady=20)
+            
+            ctk.CTkButton(
+                btn_frame,
+                text="Cancel",
+                command=dialog.destroy,
+                fg_color=COLORS["input_bg"],
+                hover_color=COLORS["hover"],
+                border_color=COLORS["border"],
+                border_width=1,
+                width=150
+            ).pack(side="left", padx=20)
+            
+            ctk.CTkButton(
+                btn_frame,
+                text="Import Character",
+                command=do_import,
+                fg_color=COLORS["accent_cyan"],
+                hover_color=COLORS["accent_purple"],
+                width=150
+            ).pack(side="left", padx=20)
+            
+            # --- Generate Image Prompt with LLM (async) ---
+            def generate_image_prompt_async():
+                import aiohttp
+                import asyncio
+                
+                description = chub_data.get('description', '')
+                
+                async def call_llm():
+                    system_prompt = """You generate concise image prompts for portrait photos based on character descriptions.
+                    
+Output format: a short description of the character's appearance for Stable Diffusion, like:
+"25yo asian woman with long black hair, glasses, slim build"
+"short thick 30yo redhead woman with huge buttocks, tanned skin, trashy tattoos"
+"37yo lebanese man with glasses, tan skin, black hair and a beard"
+
+Focus on: age, ethnicity, hair, distinctive features, body type. Keep it under 30 words."""
+
+                    user_prompt = f"""Based on this character description, generate a concise portrait image prompt:
+
+{description}
+
+Generate ONLY the image prompt, nothing else."""
+
+                    # Use OpenRouter
+                    from config import OPENROUTER_KEY
+                    
+                    headers = {
+                        "Authorization": f"Bearer {OPENROUTER_KEY}",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    payload = {
+                        "model": "deepseek/deepseek-chat",
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "max_tokens": 100,
+                        "temperature": 0.7
+                    }
+                    
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(
+                                "https://openrouter.ai/api/v1/chat/completions",
+                                json=payload,
+                                headers=headers,
+                                timeout=aiohttp.ClientTimeout(total=30)
+                            ) as response:
+                                if response.status == 200:
+                                    r = await response.json()
+                                    if 'choices' in r and len(r['choices']) > 0:
+                                        return r['choices'][0]['message']['content'].strip().strip('"')
+                    except Exception as e:
+                        print(f"Error calling LLM: {e}")
+                    return None
+                
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(call_llm())
+                finally:
+                    loop.close()
+                
+                # Update UI on main thread
+                def update_ui():
+                    if result:
+                        image_prompt_textbox.delete("1.0", "end")
+                        image_prompt_textbox.insert("1.0", result)
+                        status_label.configure(text="✅ Image prompt generated. You can edit it before importing.")
+                    else:
+                        image_prompt_textbox.delete("1.0", "end")
+                        image_prompt_textbox.insert("1.0", f"{char_name}, detailed portrait")
+                        status_label.configure(text="⚠️ LLM failed. Using fallback prompt. You can edit it.")
+                
+                dialog.after(0, update_ui)
+            
+            # Start LLM generation in background
+            threading.Thread(target=generate_image_prompt_async, daemon=True).start()
+            
+            # --- Generate Scenarios with LLM if needed ---
+            if needs_scenario_generation:
+                def generate_scenarios_async():
+                    import aiohttp
+                    import asyncio
+                    
+                    description = chub_data.get('description', '')
+                    
+                    async def call_llm():
+                        system_prompt = """You generate starting scenarios for roleplay characters.
+
+Generate 3 different starting scenarios/opening messages for a character. Each should:
+- Be 2-4 sentences setting up an initial situation
+- Use different settings, moods, or contexts
+- Be written from the character's perspective (first person or descriptive)
+
+Format: Return ONLY 3 scenarios, separated by |||
+
+Example:
+*She's sitting at the cafe when she spots you walk in* Hey you! Over here!|||*Late at night, your phone buzzes with a text from her* can't sleep... you up?|||*You bump into her at the grocery store* Oh! I didn't expect to see you here..."""
+
+                        user_prompt = f"""Based on this character, generate 3 roleplay starting scenarios:
+
+{description[:2000]}
+
+Generate ONLY the 3 scenarios separated by |||"""
+
+                        from config import OPENROUTER_KEY
+                        
+                        headers = {
+                            "Authorization": f"Bearer {OPENROUTER_KEY}",
+                            "Content-Type": "application/json"
+                        }
+                        
+                        payload = {
+                            "model": "deepseek/deepseek-chat",
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            "max_tokens": 500,
+                            "temperature": 0.8
+                        }
+                        
+                        try:
+                            async with aiohttp.ClientSession() as session:
+                                async with session.post(
+                                    "https://openrouter.ai/api/v1/chat/completions",
+                                    json=payload,
+                                    headers=headers,
+                                    timeout=aiohttp.ClientTimeout(total=30)
+                                ) as response:
+                                    if response.status == 200:
+                                        r = await response.json()
+                                        if 'choices' in r and len(r['choices']) > 0:
+                                            return r['choices'][0]['message']['content'].strip()
+                        except Exception as e:
+                            print(f"Error calling LLM for scenarios: {e}")
+                        return None
+                    
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        result = loop.run_until_complete(call_llm())
+                    finally:
+                        loop.close()
+                    
+                    def update_scenarios():
+                        nonlocal scenario_options
+                        if result:
+                            # Parse the scenarios
+                            new_scenarios = [s.strip() for s in result.split("|||") if s.strip()]
+                            if new_scenarios:
+                                scenario_options.clear()
+                                scenario_options.extend(new_scenarios)
+                                # Update dropdown
+                                scenario_combo.configure(values=[f"{i}: {opt[:60]}..." for i, opt in enumerate(scenario_options)])
+                                scenario_combo.set(f"0: {scenario_options[0][:60]}...")
+                                # Update preview
+                                scenario_preview.configure(state="normal")
+                                scenario_preview.delete("1.0", "end")
+                                scenario_preview.insert("1.0", scenario_options[0])
+                                scenario_preview.configure(state="disabled")
+                        else:
+                            scenario_options[0] = "No scenario - character will respond to your first message"
+                            scenario_combo.configure(values=["0: No scenario..."])
+                            scenario_combo.set("0: No scenario...")
+                    
+                    dialog.after(0, update_scenarios)
+                
+                threading.Thread(target=generate_scenarios_async, daemon=True).start()
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("Import Error", f"Failed to import character: {e}")
+
+    def refresh_character_list(self):
+        """Refresh the character dropdown with imported characters."""
+        # Reload imported characters
+        from characters import characters as base_chars
+        imported = self.chub_importer.load_imported()
+        all_chars = {**base_chars, **imported}
+        
+        # Update the dropdown
+        char_list = list(all_chars.keys())
+        self.char_combo.configure(values=char_list)
+        
+        # Update the global characters dict for other parts of the app
+        global characters
+        characters.update(imported)
+
+    def delete_imported_character(self):
+        """Delete an imported character from the launcher."""
+        imported = self.chub_importer.list_imported()
+        
+        if not imported:
+            messagebox.showinfo("No Imported Characters", "There are no imported characters to delete.")
+            return
+        
+        # Create delete dialog
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Delete Imported Character")
+        dialog.geometry("400x200")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.configure(fg_color=COLORS["bg_primary"])
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() - 400) // 2
+        y = (dialog.winfo_screenheight() - 200) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        ctk.CTkLabel(
+            dialog,
+            text="Select character to delete:",
+            font=("Segoe UI", 14, "bold"),
+            text_color=COLORS["text_primary"]
+        ).pack(pady=20)
+        
+        char_var = ctk.StringVar()
+        char_combo = ctk.CTkComboBox(
+            dialog,
+            variable=char_var,
+            values=imported,
+            width=300,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
+        char_combo.pack(pady=10)
+        if imported:
+            char_combo.set(imported[0])
+        
+        def do_delete():
+            name = char_var.get()
+            if name and messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{name}'?"):
+                if self.chub_importer.delete(name):
+                    self.refresh_character_list()
+                    dialog.destroy()
+                    messagebox.showinfo("Deleted", f"Character '{name}' has been deleted.")
+                else:
+                    messagebox.showerror("Error", f"Failed to delete '{name}'.")
+        
+        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        btn_frame.pack(pady=20)
+        
+        ctk.CTkButton(
+            btn_frame,
+            text="Cancel",
+            command=dialog.destroy,
+            fg_color=COLORS["input_bg"],
+            hover_color=COLORS["hover"],
+            border_color=COLORS["border"],
+            border_width=1
+        ).pack(side="left", padx=10)
+        
+        ctk.CTkButton(
+            btn_frame,
+            text="Delete",
+            command=do_delete,
+            fg_color=COLORS["error"],
+            hover_color="#dc2626"
+        ).pack(side="left", padx=10)
 
     def on_closing(self):
         self.stop_all_bots()

@@ -49,7 +49,7 @@ OPENROUTER_MODELS = {
    
    
 }
-OPENROUTER_MODEL = "x-ai/grok-4.1-fast:free"  
+OPENROUTER_MODEL = "x-ai/grok-4.1-fast"
 OPENROUTER_MAX_TOKENS = 1024
 
 # Anthropic API configuration
@@ -117,6 +117,10 @@ HEDRA_HEADERS = {
 
 # Zonos configuration
 ZONOS_URL = os.getenv('ZONOS_URL', 'http://localhost:7860')
+
+# Ngrok configuration
+NGROK_AUTH_TOKEN = os.getenv('NGROK_AUTH_TOKEN')
+USE_NGROK = os.getenv('USE_NGROK', 'false').lower() == 'true'
 
 # API timeout settings
 API_TIMEOUT = 300  # seconds

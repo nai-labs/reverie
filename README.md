@@ -12,11 +12,12 @@ A powerful, standalone local AI roleplay platform that brings your characters to
 
 *   **Glassmorphism Premium UI**: A stunning, modern interface featuring glass-effect panels, dynamic gradients, and smooth animations.
 *   **Reverie Launcher**: A professional GUI (`launcher.py`) with a cohesive "Slate" theme to manage users, characters, and settings.
+*   **Chub.ai Character Import**: One-click import of character cards from Chub.ai with auto-generated image prompts and scenarios.
 *   **Multi-LLM Support**: Seamlessly switch between Anthropic (Claude), OpenRouter, and LMStudio models.
 *   **Real-Time TTS**: Integrated ElevenLabs Text-to-Speech with auto-play and voice direction.
 *   **Multimedia Generation**:
     *   **Selfies**: Generate context-aware images of your character on demand.
-    *   **Videos**: Create short video clips from generated images using Replicate (Wan-2.1-S2V).
+    *   **Videos**: Create short video clips from generated images using Replicate or Wavespeed.
 *   **Remote Access**: Securely access your session from other devices on your local network with password protection.
 *   **Dynamic Settings**: Adjust system prompts, image prompts, and voice settings directly from the web UI.
 
@@ -53,12 +54,20 @@ A powerful, standalone local AI roleplay platform that brings your characters to
     ```
 2.  **Configure & Launch**:
     *   Select a **User** (or add one in `users.py`).
-    *   Select a **Character** (defined in `characters.py`).
+    *   Select a **Character** (defined in `characters.py` or import from Chub.ai).
     *   (Optional) Set a **Remote Password** for network access.
     *   Click **LAUNCH APP**.
 3.  **Chat**:
     *   The web interface will open automatically at `http://localhost:8000`.
     *   Start chatting! Use the buttons below the input box to generate selfies or videos.
+
+### Importing Characters from Chub.ai
+
+1.  Download a character card JSON from [Chub.ai](https://chub.ai/).
+2.  In the launcher, click **Import Character**.
+3.  Select the JSON file and preview the character.
+4.  (Optional) Generate a reference image for face swap.
+5.  Click **Import Character** to add to your collection.
 
 ## ⚙️ Configuration
 
@@ -79,17 +88,18 @@ Characters are defined in `characters.py`. You can add new characters by adding 
 }
 ```
 
-### Remote Access
-To access the app from another device on your network:
-1.  Set a **Remote Password** in the Launcher dashboard.
-2.  Find your host machine's local IP address (e.g., `192.168.1.x`).
-3.  On the other device, navigate to `http://<your-ip>:8000`.
-4.  Enter the password when prompted.
+### Public Access (One-Click)
+To access the app from anywhere (not just your home WiFi):
+1.  Sign up for a free account at [ngrok.com](https://ngrok.com/).
+2.  In the **Reverie Launcher**, go to the **LLM Settings** tab and paste your **Ngrok Auth Token**.
+3.  On the **Dashboard**, check the **Public Link** box.
+4.  Click **LAUNCH APP**. A public `https://...` link will be generated and displayed in the terminal.
 
 ## 📂 Project Structure
 
 *   `launcher.py`: Main entry point and control dashboard.
 *   `server.py`: FastAPI backend server handling chat and generation logic.
+*   `chub_importer.py`: Import and convert Chub.ai character cards.
 *   `web/`: Frontend HTML, CSS, and JavaScript files.
 *   `characters.py`: Character definitions and configuration.
 *   `config.py`: Global configuration and API settings.

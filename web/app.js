@@ -11,6 +11,7 @@ const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const genImageBtn = document.getElementById('gen-image-btn');
+const genImageDirectBtn = document.getElementById('gen-image-direct-btn');
 const genVideoBtn = document.getElementById('gen-video-btn');
 const videoModelSelect = document.getElementById('video-model-select');
 const settingsBtn = document.getElementById('settings-btn');
@@ -18,6 +19,7 @@ const settingsModal = document.getElementById('settings-modal');
 const closeSettingsBtn = document.getElementById('close-settings-btn');
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 const backgroundLayer = document.getElementById('background-layer');
+const exportBtn = document.getElementById('export-btn');
 
 // Password Elements
 const passwordModal = document.getElementById('password-modal');
@@ -304,6 +306,22 @@ async function generateImage() {
     }
 }
 
+async function generateImageDirect() {
+    addSystemMessage('Generating image from direct prompt...');
+    try {
+        const response = await fetch(`${API_BASE}/generate/image/direct`, { method: 'POST' });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Generation failed');
+        }
+        const data = await response.json();
+        addImage(data.image_url, data.prompt);
+    } catch (error) {
+        console.error('Direct image gen failed:', error);
+        addSystemMessage(`Failed: ${error.message}`);
+    }
+}
+
 async function generateVideo() {
     const model = videoModelSelect ? videoModelSelect.value : 'infinitetalk';
     const modelName = videoModelSelect ? videoModelSelect.options[videoModelSelect.selectedIndex].text : 'InfiniteTalk';
@@ -395,11 +413,49 @@ if (messageInput) {
 }
 
 if (genImageBtn) genImageBtn.addEventListener('click', generateImage);
+if (genImageDirectBtn) genImageDirectBtn.addEventListener('click', generateImageDirect);
 if (genVideoBtn) genVideoBtn.addEventListener('click', generateVideo);
 
 if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
 if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
 if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', saveSettings);
+
+if (exportBtn) {
+    exportBtn.addEventListener('click', async () => {
+        addSystemMessage('Preparing export...');
+        try {
+            const response = await fetch(`${API_BASE}/export`);
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Export failed');
+            }
+
+            // Get the filename from Content-Disposition header
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'reverie_export.zip';
+            if (contentDisposition) {
+                const match = contentDisposition.match(/filename=(.+)/);
+                if (match) filename = match[1];
+            }
+
+            // Download the blob
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+
+            addSystemMessage('Export complete! Check your downloads.');
+        } catch (error) {
+            console.error('Export failed:', error);
+            addSystemMessage(`Failed to export: ${error.message}`);
+        }
+    });
+}
 
 // Start
 document.addEventListener('DOMContentLoaded', init);

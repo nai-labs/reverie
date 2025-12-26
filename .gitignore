@@ -38,6 +38,9 @@ Thumbs.db
 *.key
 *.pem
 characters.py
+imported_characters.json
+latest_public_url.txt
+
 
 # Temporary files
 *.tmp
@@ -157,7 +160,6 @@ output/
 discord_dreams.db
 
 # Backup files
-characters copy.py
 *.bak
 
 # Local settings and logs
