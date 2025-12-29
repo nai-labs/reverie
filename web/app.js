@@ -294,9 +294,10 @@ function scrollToBottom() {
 
 // Media Generation
 async function generateImage() {
-    addSystemMessage('Generating image...');
+    const imageModel = document.getElementById('image-model-select').value;
+    addSystemMessage(`Generating image (${imageModel})...`);
     try {
-        const response = await fetch(`${API_BASE}/generate/image`, { method: 'POST' });
+        const response = await fetch(`${API_BASE}/generate/image?model=${imageModel}`, { method: 'POST' });
         if (!response.ok) throw new Error('Generation failed');
         const data = await response.json();
         addImage(data.image_url, data.prompt);
@@ -307,9 +308,10 @@ async function generateImage() {
 }
 
 async function generateImageDirect() {
-    addSystemMessage('Generating image from direct prompt...');
+    const imageModel = document.getElementById('image-model-select').value;
+    addSystemMessage(`Generating image from direct prompt (${imageModel})...`);
     try {
-        const response = await fetch(`${API_BASE}/generate/image/direct`, { method: 'POST' });
+        const response = await fetch(`${API_BASE}/generate/image/direct?model=${imageModel}`, { method: 'POST' });
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.detail || 'Generation failed');
@@ -350,7 +352,6 @@ async function openSettings() {
         document.getElementById('read-narration').checked = data.read_narration;
         document.getElementById('pov-mode').checked = data.pov_mode;
         document.getElementById('first-person-mode').checked = data.first_person_mode;
-        document.getElementById('sd-mode').value = data.sd_mode || 'xl';
 
         settingsModal.classList.remove('hidden');
     } catch (error) {
@@ -365,8 +366,7 @@ async function saveSettings() {
         tts_url: document.getElementById('tts-url').value,
         read_narration: document.getElementById('read-narration').checked,
         pov_mode: document.getElementById('pov-mode').checked,
-        first_person_mode: document.getElementById('first-person-mode').checked,
-        sd_mode: document.getElementById('sd-mode').value
+        first_person_mode: document.getElementById('first-person-mode').checked
     };
 
     try {
@@ -419,6 +419,221 @@ if (genVideoBtn) genVideoBtn.addEventListener('click', generateVideo);
 if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
 if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
 if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', saveSettings);
+
+// LoRA Video Modal
+const loraVideoBtn = document.getElementById('lora-video-btn');
+const loraModal = document.getElementById('lora-modal');
+const closeLoraBtn = document.getElementById('close-lora-btn');
+const generateLoraBtn = document.getElementById('generate-lora-btn');
+const loraPresetSelect = document.getElementById('lora-preset-select');
+const customUrlGroup = document.getElementById('custom-url-group');
+
+// LoRA Presets - loaded dynamically from server
+let LORA_PRESETS = {};
+
+// Load LoRA presets from server and populate dropdown
+async function loadLoraPresets() {
+    try {
+        const response = await fetch(`${API_BASE}/lora-presets`);
+        if (response.ok) {
+            const data = await response.json();
+            LORA_PRESETS = data.presets || {};
+            populateLoraDropdown();
+        }
+    } catch (error) {
+        console.error('Failed to load LoRA presets:', error);
+    }
+}
+
+function populateLoraDropdown() {
+    if (!loraPresetSelect) return;
+
+    // Clear existing options except "custom"
+    loraPresetSelect.innerHTML = '';
+
+    // Add preset options
+    for (const name of Object.keys(LORA_PRESETS)) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        loraPresetSelect.appendChild(option);
+    }
+
+    // Add custom option at the end
+    const customOption = document.createElement('option');
+    customOption.value = 'custom';
+    customOption.textContent = 'Custom URL...';
+    loraPresetSelect.appendChild(customOption);
+
+    // Restore saved preset if any
+    const savedPreset = localStorage.getItem('lora_preset');
+    if (savedPreset && (LORA_PRESETS[savedPreset] || savedPreset === 'custom')) {
+        loraPresetSelect.value = savedPreset;
+    }
+}
+
+// Load presets on page load
+loadLoraPresets();
+
+// Handle preset selection - show/hide custom URL field and pre-fill prompt/scale
+if (loraPresetSelect) {
+    loraPresetSelect.addEventListener('change', () => {
+        const presetValue = loraPresetSelect.value;
+        const isCustom = presetValue === 'custom';
+
+        if (customUrlGroup) {
+            customUrlGroup.style.display = isCustom ? 'block' : 'none';
+        }
+
+        // Pre-fill prompt and scale from preset (if not custom)
+        if (!isCustom && LORA_PRESETS[presetValue]) {
+            const preset = LORA_PRESETS[presetValue];
+            if (preset.prompt && loraPromptInput) {
+                loraPromptInput.value = preset.prompt;
+                localStorage.setItem('lora_prompt', preset.prompt);
+            }
+            const scaleInput = document.getElementById('lora-scale');
+            if (scaleInput) {
+                scaleInput.value = preset.scale;
+            }
+        }
+
+        // Save preset choice
+        localStorage.setItem('lora_preset', presetValue);
+    });
+}
+
+// Save prompt on change
+const loraPromptInput = document.getElementById('lora-prompt');
+if (loraPromptInput) {
+    loraPromptInput.addEventListener('input', () => {
+        localStorage.setItem('lora_prompt', loraPromptInput.value);
+    });
+}
+
+// Save custom URL on change
+const loraUrlInput = document.getElementById('lora-url');
+if (loraUrlInput) {
+    loraUrlInput.addEventListener('input', () => {
+        localStorage.setItem('lora_custom_url', loraUrlInput.value);
+    });
+}
+
+// Restore saved values on modal open
+if (loraVideoBtn) {
+    loraVideoBtn.addEventListener('click', () => {
+        // Restore saved values
+        const savedPrompt = localStorage.getItem('lora_prompt');
+        const savedPreset = localStorage.getItem('lora_preset');
+        const savedCustomUrl = localStorage.getItem('lora_custom_url');
+
+        if (savedPrompt && loraPromptInput) loraPromptInput.value = savedPrompt;
+        if (savedPreset && loraPresetSelect) {
+            loraPresetSelect.value = savedPreset;
+            if (customUrlGroup) {
+                customUrlGroup.style.display = savedPreset === 'custom' ? 'block' : 'none';
+            }
+        }
+        if (savedCustomUrl && loraUrlInput) loraUrlInput.value = savedCustomUrl;
+
+        loraModal.classList.remove('hidden');
+    });
+}
+
+if (closeLoraBtn) closeLoraBtn.addEventListener('click', () => loraModal.classList.add('hidden'));
+if (generateLoraBtn) generateLoraBtn.addEventListener('click', generateLoraVideo);
+
+// Sync LoRAs to local button
+const syncLorasBtn = document.getElementById('sync-loras-btn');
+if (syncLorasBtn) syncLorasBtn.addEventListener('click', syncLorasToLocal);
+
+async function syncLorasToLocal() {
+    // Get all preset URLs
+    const loraUrls = Object.entries(LORA_PRESETS).map(([name, preset]) => ({
+        name: name,
+        url: preset.url
+    }));
+
+    addSystemMessage(`Syncing ${loraUrls.length} LoRAs to local folder...`);
+    loraModal.classList.add('hidden');
+
+    try {
+        const response = await fetch(`${API_BASE}/sync/loras`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ loras: loraUrls })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Sync failed');
+        }
+
+        const data = await response.json();
+        addSystemMessage(`✅ Synced ${data.downloaded} LoRAs, ${data.skipped} already existed.`);
+    } catch (error) {
+        console.error('LoRA sync failed:', error);
+        addSystemMessage(`Failed to sync: ${error.message}`);
+    }
+}
+
+async function generateLoraVideo() {
+    const wanModel = document.getElementById('wan-model-select').value;
+    const prompt = document.getElementById('lora-prompt').value.trim();
+    const presetValue = loraPresetSelect ? loraPresetSelect.value : 'custom';
+    const loraScale = parseFloat(document.getElementById('lora-scale').value) || 1.0;
+    const numFrames = parseInt(document.getElementById('lora-frames').value) || 81;
+    const fps = parseInt(document.getElementById('lora-fps').value) || 16;
+
+    // Get LoRA URL from preset or custom input
+    let loraUrl;
+    if (presetValue === 'custom') {
+        loraUrl = document.getElementById('lora-url').value.trim();
+    } else {
+        loraUrl = LORA_PRESETS[presetValue]?.url || '';
+    }
+
+    if (!prompt) {
+        alert('Please enter a prompt.');
+        return;
+    }
+    if (!loraUrl) {
+        alert('Please enter or select a LoRA URL.');
+        return;
+    }
+
+    loraModal.classList.add('hidden');
+    const modelName = wanModel === 'wan-2.2-fast' ? 'WAN 2.2 Fast' : 'WAN 2.1';
+    const presetName = presetValue === 'custom' ? 'Custom' : presetValue;
+    addSystemMessage(`Generating LoRA video with ${modelName} + ${presetName} (${numFrames} frames @ ${fps}fps)...`);
+
+    try {
+        const response = await fetch(`${API_BASE}/generate/video/lora`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: prompt,
+                lora_url: loraUrl,
+                lora_scale: loraScale,
+                wan_model: wanModel,
+                num_frames: numFrames,
+                fps: fps
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'LoRA video generation failed');
+        }
+
+        const data = await response.json();
+        addVideo(data.video_url, data.prompt);
+        addSystemMessage('LoRA video generated successfully!');
+    } catch (error) {
+        console.error('LoRA video gen failed:', error);
+        addSystemMessage(`Failed: ${error.message}`);
+    }
+}
 
 if (exportBtn) {
     exportBtn.addEventListener('click', async () => {

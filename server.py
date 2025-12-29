@@ -110,7 +110,6 @@ async def startup_event():
     
     # Load imported characters into the global characters dict
     try:
-        import json
         if os.path.exists("imported_characters.json"):
             with open("imported_characters.json", "r", encoding="utf-8") as f:
                 imported = json.load(f)
@@ -319,23 +318,35 @@ async def generate_tts(request: TTSRequest):
     return {"tts_url": tts_file}
 
 @app.post("/api/generate/image")
-async def generate_image():
+async def generate_image(model: str = "z-image-turbo"):
+    """Generate image with specified model. Options: z-image-turbo, xl-lustify, xl-epicrealism"""
     if not state.image_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    # Map model to sd_mode and checkpoint
+    from config import DEFAULT_SD_MODEL, EPICREALISM_SD_MODEL
+    if model == "z-image-turbo":
+        sd_mode = "lumina"
+        sd_checkpoint = None  # Uses default lumina model
+    elif model == "xl-lustify":
+        sd_mode = "xl"
+        sd_checkpoint = DEFAULT_SD_MODEL
+    elif model == "xl-epicrealism":
+        sd_mode = "xl"
+        sd_checkpoint = EPICREALISM_SD_MODEL
+    else:
+        sd_mode = "lumina"
+        sd_checkpoint = None
+    
+    logger.info(f"[Image Gen] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}")
     
     # 1. Generate Prompt
     conversation = state.conversation_manager.get_conversation()
     
-    # Get POV mode, First-Person mode, and SD mode settings
+    # Get POV mode and First-Person mode settings
     char_settings = characters.get(state.character_name, {})
     pov_mode = char_settings.get("pov_mode", False)
     first_person_mode = char_settings.get("first_person_mode", False)
-    sd_mode = char_settings.get("sd_mode", "xl")
-    
-    # Debug logging for SD mode
-    logger.info(f"[DEBUG] Character: {state.character_name}")
-    logger.info(f"[DEBUG] char_settings keys: {list(char_settings.keys())}")
-    logger.info(f"[DEBUG] sd_mode from settings: '{sd_mode}'")
     
     prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode, first_person_mode=first_person_mode)
     
@@ -343,9 +354,7 @@ async def generate_image():
         raise HTTPException(status_code=500, detail="Failed to generate image prompt")
         
     # 2. Generate Image
-    # Pass first_person_mode and sd_mode
-    logger.info(f"[DEBUG] Calling generate_image with sd_mode='{sd_mode}'")
-    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode, sd_mode=sd_mode)
+    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode, sd_mode=sd_mode, sd_checkpoint=sd_checkpoint)
     
     if not image_data:
         raise HTTPException(status_code=500, detail="Failed to generate image")
@@ -356,13 +365,7 @@ async def generate_image():
     # Update conversation manager with last selfie path (needed for video)
     state.conversation_manager.set_last_selfie_path(image_path)
     
-    # Return relative path for frontend
-    # image_path is absolute or relative to cwd. We need to make it relative to 'output' mount.
-    # The save_image method saves to subfolder_path which is inside 'output/session_id'
-    # We can just return the filename and construct the url, or return the full relative path.
-    
     relative_path = os.path.relpath(image_path, start=os.getcwd())
-    # Ensure forward slashes for URL
     relative_path = relative_path.replace("\\", "/")
     
     return {
@@ -371,10 +374,27 @@ async def generate_image():
     }
 
 @app.post("/api/generate/image/direct")
-async def generate_image_direct():
+async def generate_image_direct(model: str = "z-image-turbo"):
     """Generate image using prompt extracted directly from the last bot message's delimited text."""
     if not state.image_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    # Map model to sd_mode and checkpoint
+    from config import DEFAULT_SD_MODEL, EPICREALISM_SD_MODEL
+    if model == "z-image-turbo":
+        sd_mode = "lumina"
+        sd_checkpoint = None
+    elif model == "xl-lustify":
+        sd_mode = "xl"
+        sd_checkpoint = DEFAULT_SD_MODEL
+    elif model == "xl-epicrealism":
+        sd_mode = "xl"
+        sd_checkpoint = EPICREALISM_SD_MODEL
+    else:
+        sd_mode = "lumina"
+        sd_checkpoint = None
+    
+    logger.info(f"[Direct Image] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}")
     
     # 1. Get the last bot message
     conversation = state.conversation_manager.get_conversation()
@@ -386,16 +406,12 @@ async def generate_image_direct():
     last_message = bot_messages[-1]
     
     # 2. Extract delimited text from the end of the message
-    # Look for text between | | or [ ] at the end (with optional markdown chars like * _ ~)
     prompt = None
     
-    # Try pipe delimiters first (handles *|...|* or just |...|)
-    # Allow optional markdown formatting chars before/after the pipes
     pipe_match = re.search(r'[*_~]*\|([^|]+)\|[*_~]*\s*$', last_message)
     if pipe_match:
         prompt = pipe_match.group(1).strip()
     else:
-        # Try square brackets (handles *[...]* or just [...])
         bracket_match = re.search(r'[*_~]*\[([^\]]+)\][*_~]*\s*$', last_message)
         if bracket_match:
             prompt = bracket_match.group(1).strip()
@@ -405,13 +421,16 @@ async def generate_image_direct():
     
     logger.info(f"[Direct Image] Extracted prompt: {prompt[:100]}...")
     
-    # 3. Get settings
+    # 3. Prepend character's image_prompt for consistent appearance/face swap
     char_settings = characters.get(state.character_name, {})
     first_person_mode = char_settings.get("first_person_mode", False)
-    sd_mode = char_settings.get("sd_mode", "xl")
+    image_prompt = char_settings.get("image_prompt", "")
+    if image_prompt:
+        prompt = f"{image_prompt}, {prompt}"
+        logger.info(f"[Direct Image] Combined prompt: {prompt[:100]}...")
     
-    # 4. Generate Image (same as regular flow, just with extracted prompt)
-    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode, sd_mode=sd_mode)
+    # 4. Generate Image
+    image_data = await state.image_manager.generate_image(prompt, first_person_mode=first_person_mode, sd_mode=sd_mode, sd_checkpoint=sd_checkpoint)
     
     if not image_data:
         raise HTTPException(status_code=500, detail="Failed to generate image")
@@ -552,6 +571,149 @@ async def generate_video_wavespeed(model: str = "infinitetalk"):
         "model": model
     }
 
+class LoraVideoRequest(BaseModel):
+    prompt: str
+    lora_url: str
+    lora_scale: float = 1.0
+    wan_model: str = "wan-2.1-lora"  # wan-2.2-fast for HuggingFace, wan-2.1-lora for CivitAI
+    num_frames: int = 81
+    fps: int = 16
+
+@app.post("/api/generate/video/lora")
+async def generate_video_lora(request: LoraVideoRequest):
+    """Generate video using WAN with a custom LoRA."""
+    
+    if not state.replicate_manager:
+        raise HTTPException(status_code=400, detail="Replicate manager not initialized")
+    
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    # 1. Get last image
+    image_path = state.conversation_manager.get_last_selfie_path()
+    if not image_path or not os.path.exists(image_path):
+        raise HTTPException(status_code=400, detail="No recent image found. Please generate an image first.")
+    
+    logger.info(f"[LoRA Video] Model: {request.wan_model}")
+    logger.info(f"[LoRA Video] Prompt: {request.prompt[:50]}...")
+    logger.info(f"[LoRA Video] LoRA URL: {request.lora_url[:50]}...")
+    logger.info(f"[LoRA Video] LoRA Scale: {request.lora_scale}, Frames: {request.num_frames}, FPS: {request.fps}")
+    
+    # 2. Generate Video
+    output = await state.replicate_manager.generate_wan_lora_video(
+        image_path=image_path,
+        prompt=request.prompt,
+        lora_url=request.lora_url,
+        lora_scale=request.lora_scale,
+        model=request.wan_model,
+        num_frames=request.num_frames,
+        fps=request.fps
+    )
+    
+    if not output:
+        raise HTTPException(status_code=500, detail="Failed to generate LoRA video")
+    
+    video_url = output[0] if isinstance(output, list) else output
+    
+    # 3. Download Video
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(video_url) as resp:
+            if resp.status == 200:
+                video_data = await resp.read()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                video_filename = f"lora_video_{timestamp}.mp4"
+                video_path = os.path.join(state.conversation_manager.subfolder_path, video_filename)
+                
+                with open(video_path, "wb") as f:
+                    f.write(video_data)
+            else:
+                raise HTTPException(status_code=500, detail="Failed to download generated video")
+    
+    # 4. Return relative path
+    relative_path = os.path.relpath(video_path, start=os.getcwd())
+    relative_path = relative_path.replace("\\", "/")
+    
+    return {
+        "video_url": f"/{relative_path}",
+        "prompt": request.prompt
+    }
+
+class LoraItem(BaseModel):
+    name: str
+    url: str
+
+class SyncLorasRequest(BaseModel):
+    loras: list[LoraItem]
+
+@app.post("/api/sync/loras")
+async def sync_loras(request: SyncLorasRequest):
+    """Download LoRA files to custom_loras folder for backup."""
+    import aiohttp
+    import urllib.parse
+    
+    # Create custom_loras folder if it doesn't exist
+    loras_folder = os.path.join(os.getcwd(), "custom_loras")
+    os.makedirs(loras_folder, exist_ok=True)
+    
+    downloaded = 0
+    skipped = 0
+    
+    async with aiohttp.ClientSession() as session:
+        for lora in request.loras:
+            # Extract filename from URL
+            parsed_url = urllib.parse.urlparse(lora.url)
+            filename = os.path.basename(urllib.parse.unquote(parsed_url.path))
+            
+            # Use preset name if filename is unclear
+            if not filename or not filename.endswith('.safetensors'):
+                filename = f"{lora.name}.safetensors"
+            
+            filepath = os.path.join(loras_folder, filename)
+            
+            # Skip if already exists
+            if os.path.exists(filepath):
+                logger.info(f"[Sync] Skipping {filename} - already exists")
+                skipped += 1
+                continue
+            
+            try:
+                logger.info(f"[Sync] Downloading {filename}...")
+                async with session.get(lora.url) as resp:
+                    if resp.status == 200:
+                        content = await resp.read()
+                        with open(filepath, 'wb') as f:
+                            f.write(content)
+                        logger.info(f"[Sync] Downloaded {filename} ({len(content) / 1024 / 1024:.1f} MB)")
+                        downloaded += 1
+                    else:
+                        logger.error(f"[Sync] Failed to download {filename}: HTTP {resp.status}")
+            except Exception as e:
+                logger.error(f"[Sync] Error downloading {filename}: {e}")
+    
+    return {
+        "downloaded": downloaded,
+        "skipped": skipped,
+        "folder": loras_folder
+    }
+
+@app.get("/api/lora-presets")
+async def get_lora_presets():
+    """Serve LoRA presets from lora_presets.json file."""
+    presets_path = os.path.join(os.getcwd(), "lora_presets.json")
+    
+    if not os.path.exists(presets_path):
+        # Return empty if file doesn't exist
+        return {"presets": {}}
+    
+    try:
+        with open(presets_path, 'r', encoding='utf-8') as f:
+            presets = json.load(f)
+        return {"presets": presets}
+    except Exception as e:
+        logger.error(f"Error loading lora_presets.json: {e}")
+        return {"presets": {}}
+
 @app.get("/api/settings")
 async def get_settings():
     if not state.character_name:
@@ -566,7 +728,7 @@ async def get_settings():
         "read_narration": char_data.get("read_narration", False),
         "pov_mode": char_data.get("pov_mode", False),
         "first_person_mode": char_data.get("first_person_mode", False),
-        "sd_mode": char_data.get("sd_mode", "xl")
+        "sd_mode": char_data.get("sd_mode", "lumina")
     }
 
 @app.get("/api/export")

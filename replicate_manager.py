@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import aiohttp
 import base64
 import replicate
-from config import API_POLL_INTERVAL, DEFAULT_VIDEO_DURATION
+from config import API_POLL_INTERVAL, DEFAULT_VIDEO_DURATION, CIVITAI_API_TOKEN
 
 load_dotenv()
 
@@ -65,6 +65,12 @@ class ReplicateManager:
 
         # Wan S2V model
         self.wan_s2v_model = "wan-video/wan-2.2-s2v"
+
+        # WAN LoRA models
+        self.wan_lora_models = {
+            "wan-2.2-fast": "wan-video/wan-2.2-i2v-fast",      # HuggingFace LoRAs
+            "wan-2.1-lora": "wan-video/wan2.1-with-lora"       # CivitAI LoRAs
+        }
 
         # Instantiate the replicate client
         # The client automatically uses the REPLICATE_API_TOKEN environment variable
@@ -549,4 +555,118 @@ class ReplicateManager:
                     }
         except Exception as e:
             logger.error(f"Error in get_model_info: {str(e)}", exc_info=True)
+            return None
+
+    def format_civitai_url(self, raw_url: str) -> str:
+        """Format a CivitAI download URL by appending the API token.
+        
+        Input: https://civitai.com/api/download/models/2494041?type=Model&format=SafeTensor
+        Output: https://civitai.com/api/download/models/2494041?type=Model&format=SafeTensor&token=XXX
+        """
+        if not CIVITAI_API_TOKEN:
+            logger.error("CIVITAI_API_TOKEN is not set in environment variables")
+            return raw_url
+        
+        # Check if token is already in URL
+        if "token=" in raw_url:
+            return raw_url
+        
+        # Append token
+        separator = "&" if "?" in raw_url else "?"
+        formatted_url = f"{raw_url}{separator}token={CIVITAI_API_TOKEN}"
+        logger.info(f"Formatted CivitAI URL: {formatted_url[:80]}...")
+        return formatted_url
+
+    async def generate_wan_lora_video(self, image_path: str, prompt: str, lora_url: str, lora_scale: float = 1.0, model: str = "wan-2.2-fast", num_frames: int = 81, fps: int = 16):
+        """Generate a video using WAN with a custom LoRA.
+        
+        model options:
+        - 'wan-2.2-fast': Uses lora_weights_transformer (HuggingFace URLs)
+        - 'wan-2.1-lora': Uses hf_lora (CivitAI URLs)
+        """
+        logger.info(f"Generating WAN LoRA video with model: {model}, lora_scale: {lora_scale}, frames: {num_frames}, fps: {fps}")
+        logger.info(f"Prompt: {prompt[:100]}...")
+        
+        # Get model identifier
+        model_id = self.wan_lora_models.get(model)
+        if not model_id:
+            logger.error(f"Unknown WAN LoRA model: {model}")
+            return None
+        
+        # Format CivitAI URL with token (only needed for wan-2.1-lora)
+        if model == "wan-2.1-lora":
+            formatted_lora_url = self.format_civitai_url(lora_url)
+        else:
+            # WAN 2.2 Fast uses HuggingFace URLs directly, no formatting needed
+            formatted_lora_url = lora_url
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {
+                    'Authorization': f'Token {self.token}',
+                    'Content-Type': 'application/json'
+                }
+                
+                # Convert image to base64
+                with open(image_path, "rb") as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
+                
+                # Get the latest version of the model
+                model_info = await self.get_model_info(model_id)
+                if not model_info or not model_info.get('versions'):
+                    logger.error(f"Could not get model version for {model_id}")
+                    return None
+                
+                version_id = model_info['versions'][0]['id']
+                
+                # Build payload based on model
+                if model == "wan-2.2-fast":
+                    # WAN 2.2 Fast uses lora_weights_transformer
+                    payload = {
+                        'version': version_id,
+                        'input': {
+                            'image': f"data:image/jpeg;base64,{image_data}",
+                            'prompt': prompt,
+                            'lora_weights_transformer': formatted_lora_url,
+                            'lora_scale_transformer': lora_scale,
+                            'go_fast': True,
+                            'num_frames': num_frames,
+                            'frames_per_second': fps,
+                            'resolution': '480p'
+                        }
+                    }
+                else:  # wan-2.1-lora
+                    # WAN 2.1 uses hf_lora
+                    payload = {
+                        'version': version_id,
+                        'input': {
+                            'image': f"data:image/jpeg;base64,{image_data}",
+                            'prompt': prompt,
+                            'hf_lora': formatted_lora_url,
+                            'lora_scale': lora_scale
+                        }
+                    }
+                
+                logger.info(f"Creating WAN LoRA prediction with model: {model_id}, version: {version_id}")
+                
+                async with session.post('https://api.replicate.com/v1/predictions', 
+                                       headers=headers, 
+                                       json=payload) as response:
+                    if response.status != 201:
+                        error_text = await response.text()
+                        logger.error(f"Error creating prediction: {error_text}")
+                        return None
+                    
+                    prediction = await response.json()
+                    prediction_id = prediction.get('id')
+                    logger.info(f"WAN LoRA prediction created with ID: {prediction_id}")
+                    
+                    # Poll for completion
+                    return await self._poll_prediction(session, prediction_id, headers)
+                    
+        except FileNotFoundError:
+            logger.error(f"Image file not found: {image_path}")
+            return None
+        except Exception as e:
+            logger.error(f"Error in generate_wan_lora_video: {str(e)}", exc_info=True)
             return None

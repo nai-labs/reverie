@@ -739,6 +739,15 @@ class BotLauncher:
         self.ngrok_token_entry.grid(row=1, column=1, sticky="ew", padx=10, pady=10)
         self.ngrok_token_entry.insert(0, self.user_settings.get("ngrok_auth_token", ""))
 
+        # Save Settings Button
+        ctk.CTkButton(
+            self.tab_llm,
+            text="Save Settings",
+            command=self.save_changes,
+            fg_color=COLORS["accent_cyan"],
+            hover_color=COLORS["accent_purple"]
+        ).grid(row=3, column=0, columnspan=2, pady=20)
+
         # Initialize model lists based on current provider
         self.on_main_provider_select(self.main_provider_var.get())
         self.on_media_provider_select(self.media_provider_var.get())
@@ -921,6 +930,7 @@ class BotLauncher:
         if not char: return
         
         try:
+            # Update in-memory character data
             characters[char].update({
                 "system_prompt": self.system_prompt.get("1.0", "end-1c"),
                 "image_prompt": self.image_prompt.get("1.0", "end-1c"),
@@ -933,8 +943,19 @@ class BotLauncher:
                 }
             })
             
-            with open("characters.py", "w", encoding="utf-8") as f:
-                f.write("characters = " + json.dumps(characters, indent=4, ensure_ascii=False).replace("false", "False").replace("true", "True").replace("null", "None"))
+            # Check if this is an imported character
+            imported = self.chub_importer.load_imported()
+            if char in imported:
+                # Save to imported_characters.json
+                imported[char] = characters[char]
+                self.chub_importer.save(imported)
+                print(f"[Launcher] Saved imported character: {char}")
+            else:
+                # Save to characters.py for built-in characters
+                with open("characters.py", "w", encoding="utf-8") as f:
+                    # Filter out imported characters before saving to characters.py
+                    base_chars = {k: v for k, v in characters.items() if k not in imported}
+                    f.write("characters = " + json.dumps(base_chars, indent=4, ensure_ascii=False).replace("false", "False").replace("true", "True").replace("null", "None"))
             
             # Save LLM Settings
             settings = {
@@ -1338,8 +1359,12 @@ Focus on: age, ethnicity, hair, distinctive features, body type. Keep it under 3
 
 Generate ONLY the image prompt, nothing else."""
 
-                    # Use OpenRouter
+                    # Use OpenRouter with user's selected model
                     from config import OPENROUTER_KEY
+                    
+                    # Get user's selected model
+                    selected_model = self.user_settings.get("main_model", "x-ai/grok-4.1-fast (grok4.1)")
+                    model_id = selected_model.split(" (")[0] if " (" in selected_model else selected_model
                     
                     headers = {
                         "Authorization": f"Bearer {OPENROUTER_KEY}",
@@ -1347,7 +1372,7 @@ Generate ONLY the image prompt, nothing else."""
                     }
                     
                     payload = {
-                        "model": "deepseek/deepseek-chat",
+                        "model": model_id,
                         "messages": [
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": user_prompt}
@@ -1355,6 +1380,8 @@ Generate ONLY the image prompt, nothing else."""
                         "max_tokens": 100,
                         "temperature": 0.7
                     }
+                    
+                    print(f"[Chub Import] Generating image prompt using: {model_id}")
                     
                     try:
                         async with aiohttp.ClientSession() as session:
@@ -1367,9 +1394,11 @@ Generate ONLY the image prompt, nothing else."""
                                 if response.status == 200:
                                     r = await response.json()
                                     if 'choices' in r and len(r['choices']) > 0:
-                                        return r['choices'][0]['message']['content'].strip().strip('"')
+                                        result = r['choices'][0]['message']['content'].strip().strip('"')
+                                        print(f"[Chub Import] Image prompt generated: {result[:50]}...")
+                                        return result
                     except Exception as e:
-                        print(f"Error calling LLM: {e}")
+                        print(f"[Chub Import] Error calling LLM for image prompt: {e}")
                     return None
                 
                 loop = asyncio.new_event_loop()
@@ -1424,13 +1453,17 @@ Generate ONLY the 3 scenarios separated by |||"""
 
                         from config import OPENROUTER_KEY
                         
+                        # Get user's selected model
+                        selected_model = self.user_settings.get("main_model", "x-ai/grok-4.1-fast (grok4.1)")
+                        model_id = selected_model.split(" (")[0] if " (" in selected_model else selected_model
+                        
                         headers = {
                             "Authorization": f"Bearer {OPENROUTER_KEY}",
                             "Content-Type": "application/json"
                         }
                         
                         payload = {
-                            "model": "deepseek/deepseek-chat",
+                            "model": model_id,
                             "messages": [
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": user_prompt}
@@ -1438,6 +1471,8 @@ Generate ONLY the 3 scenarios separated by |||"""
                             "max_tokens": 500,
                             "temperature": 0.8
                         }
+                        
+                        print(f"[Chub Import] Generating scenarios using: {model_id}")
                         
                         try:
                             async with aiohttp.ClientSession() as session:
@@ -1450,9 +1485,11 @@ Generate ONLY the 3 scenarios separated by |||"""
                                     if response.status == 200:
                                         r = await response.json()
                                         if 'choices' in r and len(r['choices']) > 0:
-                                            return r['choices'][0]['message']['content'].strip()
+                                            result = r['choices'][0]['message']['content'].strip()
+                                            print(f"[Chub Import] Scenarios generated successfully")
+                                            return result
                         except Exception as e:
-                            print(f"Error calling LLM for scenarios: {e}")
+                            print(f"[Chub Import] Error calling LLM for scenarios: {e}")
                         return None
                     
                     loop = asyncio.new_event_loop()

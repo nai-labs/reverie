@@ -26,12 +26,30 @@ class ChubImporter:
         "read_narration": False,
         "pov_mode": True,
         "first_person_mode": False,
-        "sd_mode": "xl"
+        "sd_mode": "lumina"
     }
     
     SELFIE_TRIGGER = '''
 
 //SELFIE-MODE-TRIGGER//: When user issues the command */selfies*, you become a concise selfie-generating machine. Ask what they want to see, then return a concise image prompt of the character in that situation. [E.G.: |[description of character posing/doing something], in [setting], amateur photo|]'''
+
+    ROLEPLAY_RULES = '''
+
+## RULES
+- Responses should be short flavor text and dialog, not long-winded.
+- Narration and any game engine message always in italics.
+- Dialog always not in italics. everything else italics.
+- Append after each response, a short visual description of what the user sees from his POV, in italics in between | delimiters e.g.:
+	"*|POV looking at a vast mountain landscape, with a shiny golden path that winds through the trees up the mountains to a glowing peak with blue sparks and fire.|*"
+	"*|POV, a hallway in a hospital in Boston MA. there are wooden doors on either side of the hallway, and at the end there is a metal gate, with a padlock hanging from it|*"
+	"*|POV image looking at dingy hotel room, with an unmade bed and harsh flourescent lighting. On the coffee table, a cat is sleeping|*"
+	"*|candid POV shot of a dark, dingy hotel room. Unmade bed, harsh fluorescent lighting. A sexy 24yo Chinese girl is stretching on the bed|*"
+	"*|POV shot, a nerdy 18yo american girl with glasses and pigtails, looking nervous and unsure, wearing an oversize hoodie and yoga pants, sitting on a couch in a messy dorm room.|*"
+	"*|POV shot, closeup of a sexy 26yo latina girl with braids and a choker, extreme closeup looking into viewers eyes, sultry|*"
+- Always include the room/setting in the visual description.
+	- Always include what the character is wearing for continuity.
+- When making a series of visual descriptions in the same setting and/or same character, keep the visual description you give across turns consistent, changing only what you need to change, so imagery is consistent yet advances with what's happening as the story goes on (persistent outfits unless she changes/takes them off, etc).
+- Every 3 or 4 turns, something unexpected happens that the user wouldn't predict.'''
 
     def parse(self, json_path: str) -> dict:
         """Parse a Chub card JSON file."""
@@ -113,8 +131,9 @@ class ChubImporter:
             post = self._replace_placeholders(chub_data['post_history_instructions'], name)
             parts.append(f"\n{post}")
         
-        # Add selfie trigger
+        # Add selfie trigger and roleplay rules
         parts.append(self.SELFIE_TRIGGER)
+        parts.append(self.ROLEPLAY_RULES)
         
         system_prompt = '\n\n'.join(parts)
         
@@ -177,3 +196,24 @@ class ChubImporter:
     def list_imported(self) -> list:
         """List names of all imported characters."""
         return list(self.load_imported().keys())
+
+    def update_all_with_rules(self) -> int:
+        """Update all existing imported characters with the roleplay rules."""
+        existing = self.load_imported()
+        updated = 0
+        
+        for name, char_data in existing.items():
+            system_prompt = char_data.get("system_prompt", "")
+            
+            # Check if rules already exist
+            if "## RULES" not in system_prompt:
+                # Add the rules
+                char_data["system_prompt"] = system_prompt + self.ROLEPLAY_RULES
+                updated += 1
+                print(f"[ChubImporter] Added rules to: {name}")
+        
+        if updated > 0:
+            with open(self.IMPORTED_FILE, 'w', encoding='utf-8') as f:
+                json.dump(existing, f, indent=2, ensure_ascii=False)
+        
+        return updated

@@ -18,6 +18,7 @@ A powerful, standalone local AI roleplay platform that brings your characters to
 *   **Multimedia Generation**:
     *   **Selfies**: Generate context-aware images of your character on demand.
     *   **Videos**: Create short video clips from generated images using Replicate or Wavespeed.
+    *   **LoRA Videos**: Generate videos with custom LoRA styles using WAN 2.1/2.2 models.
 *   **Remote Access**: Securely access your session from other devices on your local network with password protection.
 *   **Dynamic Settings**: Adjust system prompts, image prompts, and voice settings directly from the web UI.
 
@@ -29,6 +30,7 @@ A powerful, standalone local AI roleplay platform that brings your characters to
     *   **LLM**: OpenRouter, Anthropic, or a local LMStudio instance.
     *   **TTS**: ElevenLabs.
     *   **Image/Video**: Replicate (for video), OpenRouter/Local (for images).
+    *   **CivitAI** (optional): For CivitAI LoRA URLs.
 
 ## 🚀 Installation
 
@@ -44,6 +46,7 @@ A powerful, standalone local AI roleplay platform that brings your characters to
     ANTHROPIC_API_KEY=your_key_here
     ELEVENLABS_API_KEY=your_key_here
     REPLICATE_API_TOKEN=your_key_here
+    CIVITAI_API_TOKEN=your_key_here  # Optional, for CivitAI LoRAs
     ```
 
 ## 🎮 Usage
@@ -68,6 +71,37 @@ A powerful, standalone local AI roleplay platform that brings your characters to
 3.  Select the JSON file and preview the character.
 4.  (Optional) Generate a reference image for face swap.
 5.  Click **Import Character** to add to your collection.
+
+## 🎬 LoRA Video Generation
+
+Generate videos with custom LoRA styles using the WAN 2.1/2.2 models on Replicate.
+
+### Setup
+
+1.  Copy `lora_presets.example.json` to `lora_presets.json`
+2.  Add your LoRA presets with URLs from HuggingFace or CivitAI:
+    ```json
+    {
+        "my_preset": {
+            "url": "https://huggingface.co/user/model/resolve/main/lora.safetensors",
+            "prompt": "Pre-filled prompt for this LoRA",
+            "scale": 1.0
+        }
+    }
+    ```
+3.  For CivitAI LoRAs, add `CIVITAI_API_TOKEN` to your `.env` file
+
+### Usage
+
+1.  Generate an image first (the LoRA video uses the last generated image)
+2.  Click the **🎬 LoRA** button
+3.  Select a preset or enter a custom URL
+4.  Adjust frames (81-121) and FPS (5-30)
+5.  Click **Generate**
+
+### Backup LoRAs
+
+Use the **📥 Sync to Local** button to download all preset LoRAs to the `custom_loras/` folder for backup.
 
 ## ⚙️ Configuration
 
@@ -103,7 +137,11 @@ To access the app from anywhere (not just your home WiFi):
 *   `web/`: Frontend HTML, CSS, and JavaScript files.
 *   `characters.py`: Character definitions and configuration.
 *   `config.py`: Global configuration and API settings.
+*   `lora_presets.json`: Your LoRA preset configurations (gitignored).
+*   `lora_presets.example.json`: Template for LoRA presets.
+*   `custom_loras/`: Downloaded LoRA files for backup (gitignored).
 *   `output/`: Stores generated images, audio, and videos.
 
 ## 🤝 Contributing
 Feel free to submit issues or pull requests to improve the web app experience!
+

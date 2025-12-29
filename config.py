@@ -107,6 +107,9 @@ REPLICATE_API_TOKEN = os.getenv('REPLICATE_API_TOKEN')
 WAVESPEED_API_KEY = os.getenv('WAVESPEED_API_KEY')
 WAVESPEED_API_URL = 'https://api.wavespeed.ai/api/v3'
 
+# CivitAI API configuration (for LoRA downloads)
+CIVITAI_API_TOKEN = os.getenv('CIVITAI_API_TOKEN')
+
 # Hedra API configuration
 HEDRA_API_KEY = os.getenv('HEDRA_API_KEY')
 HEDRA_BASE_URL = 'https://mercury.dev.dream-ai.com/api'
@@ -137,6 +140,7 @@ IMAGE_STEPS = 30
 IMAGE_GUIDANCE_SCALE = 4  # CFG Scale from UI
 IMAGE_SAMPLER = "DPM++ 2M SDE"  # Sampler from UI
 DEFAULT_SD_MODEL = "lustifySDXLNSFW_ggwpV7.safetensors"
+EPICREALISM_SD_MODEL = "epicrealismXL_vxviiCrystalclear.safetensors"
 
 # Z-Image mode settings (GGUF quantized for better VRAM efficiency)
 LUMINA_SD_MODEL = "z-image-turbo-q4_k_m.gguf"

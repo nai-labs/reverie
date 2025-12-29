@@ -1,0 +1,12 @@
+{
+    "example_preset": {
+        "url": "https://huggingface.co/username/model/resolve/main/model.safetensors",
+        "prompt": "Description of what this LoRA does - this will pre-fill the prompt field",
+        "scale": 1.0
+    },
+    "another_preset": {
+        "url": "https://huggingface.co/username/another-model/resolve/main/lora.safetensors",
+        "prompt": "Another example prompt for this LoRA",
+        "scale": 0.8
+    }
+}

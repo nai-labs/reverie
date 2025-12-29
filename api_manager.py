@@ -41,10 +41,12 @@ class APIManager:
 
         # Override with llm_settings if provided
         if llm_settings:
+            print(f"[LLM Settings] Loaded from file: {llm_settings}")
             # Main LLM settings
             if "main_provider" in llm_settings and "main_model" in llm_settings:
                 provider = llm_settings["main_provider"].lower()
                 model = llm_settings["main_model"].split(" (")[0] # Extract model name
+                print(f"[LLM Settings] Main: provider={provider}, model={model}")
 
                 if provider in ["anthropic", "openrouter", "lmstudio"]:
                     self.current_llm = provider
@@ -52,6 +54,7 @@ class APIManager:
                         self.current_claude_model = model
                     elif provider == "openrouter":
                         self.current_openrouter_model = model
+                        print(f"[LLM Settings] Set OpenRouter model to: {model}")
                     elif provider == "lmstudio":
                         self.current_lmstudio_model = model
                 else:
@@ -71,7 +74,9 @@ class APIManager:
                     logger.warning(f"Invalid media provider '{media_provider}' in llm_settings. Using default '{self.media_llm_provider}'.")
 
     async def generate_response(self, message, conversation, system_prompt):
-        logger.info(f"APIManager: Generating response using LLM: {self.current_llm}") # Added for debugging
+        model_name = self.get_current_model()
+        print(f"\n[LLM] Chat response using: {self.current_llm.upper()} -> {model_name}")
+        logger.info(f"APIManager: Generating response using {self.current_llm} ({model_name})")
         if self.current_llm == "anthropic":
             response_text = await self.generate_anthropic_response(message, conversation, system_prompt)
         elif self.current_llm == "openrouter":
@@ -150,7 +155,8 @@ class APIManager:
 
     async def generate_media_llm_response(self, system_prompt, user_prompt, max_tokens=128, temperature=0.3):
         """Generates a response using the configured media LLM."""
-        logger.info(f"APIManager: Generating media response using LLM: {self.media_llm_provider} ({self.media_llm_model})")
+        print(f"[LLM] Media prompt using: {self.media_llm_provider.upper()} -> {self.media_llm_model}")
+        logger.info(f"APIManager: Generating media response using {self.media_llm_provider} ({self.media_llm_model})")
 
         # Currently only supports OpenRouter for media LLM
         if self.media_llm_provider != "openrouter":

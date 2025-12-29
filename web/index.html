@@ -44,6 +44,11 @@
                 <div class="action-buttons">
                     <button id="gen-image-btn" class="action-btn">📸 Image</button>
                     <button id="gen-image-direct-btn" class="action-btn">🎯 Direct</button>
+                    <select id="image-model-select" class="model-select">
+                        <option value="z-image-turbo" selected>Z-Image Turbo</option>
+                        <option value="xl-lustify">XL Lustify</option>
+                        <option value="xl-epicrealism">XL EpicRealism</option>
+                    </select>
                     <select id="video-model-select" class="video-select">
                         <option value="wan">WAN S2V</option>
                         <option value="infinitetalk">InfiniteTalk</option>
@@ -51,6 +56,7 @@
                         <option value="hunyuan-avatar">Hunyuan Avatar</option>
                     </select>
                     <button id="gen-video-btn" class="action-btn">🎥 Generate</button>
+                    <button id="lora-video-btn" class="action-btn">🎬 LoRA</button>
                 </div>
             </div>
         </div>
@@ -97,16 +103,55 @@
                     <input type="checkbox" id="first-person-mode">
                     <label for="first-person-mode">First-Person Mode (No Face Swap)</label>
                 </div>
-                <div class="form-group">
-                    <label for="sd-mode">Stable Diffusion Mode</label>
-                    <select id="sd-mode">
-                        <option value="xl">XL (Fast)</option>
-                        <option value="lumina">Z-Image (High Quality)</option>
-                    </select>
-                </div>
                 <div class="modal-actions">
                     <button id="save-settings-btn">Save</button>
                     <button id="close-settings-btn">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LoRA Video Modal -->
+        <div id="lora-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>LoRA Video Generation</h2>
+                <div class="form-group">
+                    <label for="wan-model-select">Model</label>
+                    <select id="wan-model-select">
+                        <option value="wan-2.2-fast" selected>WAN 2.2 Fast (HuggingFace)</option>
+                        <option value="wan-2.1-lora">WAN 2.1 (CivitAI)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="lora-preset-select">LoRA Preset</label>
+                    <select id="lora-preset-select">
+                        <!-- Options populated dynamically from lora_presets.json -->
+                        <option value="custom">Loading...</option>
+                    </select>
+                </div>
+                <div class="form-group" id="custom-url-group" style="display:none;">
+                    <label for="lora-url">Custom LoRA URL</label>
+                    <input type="text" id="lora-url" placeholder="HuggingFace or CivitAI URL...">
+                </div>
+                <div class="form-group">
+                    <label for="lora-prompt">Prompt</label>
+                    <textarea id="lora-prompt" placeholder="Describe the video motion/action..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="lora-scale">LoRA Scale</label>
+                    <input type="number" id="lora-scale" value="1" min="0" max="2" step="0.1">
+                </div>
+                <div class="form-group">
+                    <label for="lora-frames">Frames (81-121)</label>
+                    <input type="number" id="lora-frames" value="81" min="81" max="121" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="lora-fps">FPS (5-30)</label>
+                    <input type="number" id="lora-fps" value="16" min="5" max="30" step="1">
+                </div>
+                <div class="modal-actions">
+                    <button id="generate-lora-btn">Generate</button>
+                    <button id="sync-loras-btn">📥 Sync to Local</button>
+                    <button id="close-lora-btn">Close</button>
                 </div>
             </div>
         </div>

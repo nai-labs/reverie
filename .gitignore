@@ -40,6 +40,8 @@ Thumbs.db
 characters.py
 imported_characters.json
 latest_public_url.txt
+lora_presets.json
+custom_loras/
 
 
 # Temporary files

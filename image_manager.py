@@ -156,7 +156,7 @@ class ImageManager:
             logger.error("Failed to get prompt from media LLM")
             return None
 
-    async def generate_image(self, prompt, first_person_mode=False, sd_mode="xl"):
+    async def generate_image(self, prompt, first_person_mode=False, sd_mode="lumina", sd_checkpoint=None):
         # Determine if we should use ReActor (Face Swap)
         # If first_person_mode is True, we DISABLE ReActor because we want a generic/scene view, not the character's face
         use_reactor = not first_person_mode
@@ -195,10 +195,9 @@ class ImageManager:
         ]
 
         # Build payload based on SD mode
-        logger.info(f"[DEBUG] generate_image received sd_mode='{sd_mode}' (type: {type(sd_mode).__name__})")
+        logger.info(f"[Image Gen] sd_mode='{sd_mode}', sd_checkpoint='{sd_checkpoint}'")
         if sd_mode == "lumina":
             # Lumina mode: different model, VAE, sampler, scheduler, steps, CFG, and shift
-            # Model and VAE must be in override_settings for Forge to actually load them
             payload = {
                 "prompt": prompt,
                 "steps": LUMINA_STEPS,
@@ -209,8 +208,6 @@ class ImageManager:
                 "seed": -1,
                 "cfg_scale": LUMINA_CFG_SCALE,
                 "alwayson_scripts": {"reactor": {"args": reactor_args}},
-                # Model, VAE, and text encoder in override_settings
-                # GGUF models are smaller, so no memory overrides needed - use Forge defaults
                 "override_settings": {
                     "sd_model_checkpoint": LUMINA_SD_MODEL,
                     "sd_vae": LUMINA_VAE,
@@ -222,8 +219,8 @@ class ImageManager:
             }
             logger.info(f"Using Lumina mode for image generation")
         else:
-            # XL mode (default): standard SDXL settings
-            # Model settings in override_settings to ensure proper switching from Lumina
+            # XL mode: use provided checkpoint or default
+            xl_model = sd_checkpoint if sd_checkpoint else DEFAULT_SD_MODEL
             payload = {
                 "prompt": prompt,
                 "steps": IMAGE_STEPS,
@@ -234,16 +231,14 @@ class ImageManager:
                 "seed": -1,
                 "cfg_scale": IMAGE_GUIDANCE_SCALE,
                 "alwayson_scripts": {"reactor": {"args": reactor_args}},
-                # Only include model settings to ensure switching from Lumina works
-                # Let Forge use its startup defaults for memory/performance settings
                 "override_settings": {
-                    "sd_model_checkpoint": DEFAULT_SD_MODEL,
+                    "sd_model_checkpoint": xl_model,
                     "sd_vae": "Automatic",
                     "forge_additional_modules": [],
                     "CLIP_stop_at_last_layers": 2
                 }
             }
-            logger.info(f"Using XL mode for image generation")
+            logger.info(f"Using XL mode with model: {xl_model}")
 
         logger.info(f"Sending payload to Stable Diffusion: {payload}")
 
@@ -268,64 +263,68 @@ class ImageManager:
         return image_file_path
 
     async def generate_wan_video_prompt(self, conversation):
-        """Generates a simple action prompt for the WAN video model based on recent conversation."""
-        context = ""
-        if len(conversation) > 0:
-            # Get last 3 messages (user and assistant)
-            recent_messages = conversation[-3:] if len(conversation) >= 3 else conversation
-            combined_context = "\n".join([f'{msg["role"]}: {msg["content"]}' for msg in recent_messages])
+        """Generates a detailed action prompt for video based on the last assistant message."""
+        
+        # Get only the last assistant message
+        last_assistant_message = None
+        for msg in reversed(conversation):
+            if msg["role"] == "assistant":
+                last_assistant_message = msg["content"]
+                break
+        
+        if not last_assistant_message:
+            logger.info("No assistant message found, using default prompt")
+            return "A woman is standing still looking at the camera."
+        
+        logger.info(f"\nGenerating video prompt from last message:\n{last_assistant_message[:300]}...")
+        
+        # New detailed system prompt
+        system_prompt = """You are a video director creating a motion prompt for an AI video generator.
 
-            logger.info(f"\nGenerating WAN video prompt using {len(recent_messages)} messages:")
-            for i, msg in enumerate(recent_messages, 1):
-                logger.info(f"\nMessage {i} ({msg['role']}):\n{msg['content'][:200]}...")
-
-            # Detailed prompt asking the LLM to describe the character's action and emotion
-            system_prompt_for_action = """Analyze the last few messages of the conversation provided below. Based on the conversation context, describe the character's current action, facial expression, and emotional state for a video generation prompt.
+Given the character's last message (dialogue + narration), describe the character's physical performance AS THEY DELIVER this dialogue. 
 
 Focus on:
-1. The physical action (e.g., sitting, walking, laughing).
-2. The facial expression and emotion (e.g., smiling warmly, looking concerned, laughing uncontrollably, crying).
-3. Any subtle movements (e.g., tilting head, hand gestures).
+1. **Body language and gestures** - What are they doing with their hands, body, posture?
+2. **Facial expressions** - How does their face change as they speak?
+3. **Movement** - Are they walking, sitting, leaning, turning?
+4. **Emotional transitions** - Does their mood shift during the message?
+5. **Eye contact** - Looking at camera, looking away, darting eyes?
 
-Conversation Context:
-{context}
+Output format: A single detailed sentence describing the character's actions and expressions as they speak.
 
-Output a single descriptive sentence starting with "A woman is...".
-Example: "A woman is sitting on a couch laughing hysterically with her head thrown back."
-Example: "A woman is standing by the window looking wistful and sad while touching the glass."
-"""
+Examples:
+- "She leans forward with an excited grin, gesturing enthusiastically with her hands while making direct eye contact, then playfully rolls her eyes."
+- "She crosses her arms defensively, looks away with a pained expression, then softens and meets your gaze with vulnerability."
+- "She stretches lazily on the bed, yawning, then props herself up on one elbow and gives a flirty wink."
+- "She paces nervously, running her fingers through her hair, avoiding eye contact as she speaks hesitantly."
 
-            prompt_content = system_prompt_for_action.format(context=combined_context)
+Do NOT include the dialogue itself. Only describe the physical performance."""
 
-        else:
-            # Default prompt if no conversation history
-            prompt_content = "A woman is standing still looking at the camera."
-            system_prompt_for_action = "Output the phrase 'A woman is standing still looking at the camera.'."
+        user_prompt = f"""Character's last message:
+
+{last_assistant_message}
+
+Describe their physical performance as they deliver this."""
 
         # Use the APIManager's media LLM generation method
         try:
             action_prompt = await self.api_manager.generate_media_llm_response(
-                system_prompt=system_prompt_for_action,
-                user_prompt=prompt_content, # Pass the context-based prompt here
-                max_tokens=100,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=150,
                 temperature=0.7
             )
 
             if action_prompt:
-                # Basic validation/cleanup
                 final_prompt = action_prompt.strip()
-                # Ensure it starts with "A woman is" if the LLM messed up, though the prompt asks for it.
-                if not final_prompt.lower().startswith("a woman"):
-                     final_prompt = f"A woman is {final_prompt}"
-                
-                logger.info(f"\nGenerated WAN video prompt: {final_prompt}")
+                logger.info(f"\nGenerated video prompt: {final_prompt}")
                 return final_prompt
             else:
-                logger.error(f"Error generating WAN prompt: Media LLM returned None")
-                return "A woman is talking expressively" # Fallback prompt
+                logger.error("Error generating video prompt: Media LLM returned None")
+                return "A woman is talking expressively"
         except Exception as e:
-            logger.error(f"Exception generating WAN prompt: {e}", exc_info=True)
-            return "A woman is talking expressively" # Fallback prompt
+            logger.error(f"Exception generating video prompt: {e}", exc_info=True)
+            return "A woman is talking expressively"
 
     async def generate_video_prompt(self, conversation):
         ethnicity_match = re.search(r'\b(?:\d+(?:-year-old)?[\s-]?)?(?:asian|lebanese|black|african|caucasian|white|hispanic|latino|latina|mexican|european|middle eastern|indian|native american|pacific islander|mixed race|biracial|multiracial|[^\s]+?(?=\s+(?:girl|woman|lady|female|man|guy|male|dude)))\b', self.image_prompt, re.IGNORECASE)
