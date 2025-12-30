@@ -575,6 +575,8 @@ class LoraVideoRequest(BaseModel):
     prompt: str
     lora_url: str
     lora_scale: float = 1.0
+    lora_url_2: Optional[str] = None  # Optional second LoRA
+    lora_scale_2: Optional[float] = None
     wan_model: str = "wan-2.1-lora"  # wan-2.2-fast for HuggingFace, wan-2.1-lora for CivitAI
     num_frames: int = 81
     fps: int = 16
@@ -596,8 +598,10 @@ async def generate_video_lora(request: LoraVideoRequest):
     
     logger.info(f"[LoRA Video] Model: {request.wan_model}")
     logger.info(f"[LoRA Video] Prompt: {request.prompt[:50]}...")
-    logger.info(f"[LoRA Video] LoRA URL: {request.lora_url[:50]}...")
-    logger.info(f"[LoRA Video] LoRA Scale: {request.lora_scale}, Frames: {request.num_frames}, FPS: {request.fps}")
+    logger.info(f"[LoRA Video] LoRA 1: {request.lora_url[:50]}... (scale: {request.lora_scale})")
+    if request.lora_url_2:
+        logger.info(f"[LoRA Video] LoRA 2: {request.lora_url_2[:50]}... (scale: {request.lora_scale_2})")
+    logger.info(f"[LoRA Video] Frames: {request.num_frames}, FPS: {request.fps}")
     
     # 2. Generate Video
     output = await state.replicate_manager.generate_wan_lora_video(
@@ -605,6 +609,8 @@ async def generate_video_lora(request: LoraVideoRequest):
         prompt=request.prompt,
         lora_url=request.lora_url,
         lora_scale=request.lora_scale,
+        lora_url_2=request.lora_url_2,
+        lora_scale_2=request.lora_scale_2,
         model=request.wan_model,
         num_frames=request.num_frames,
         fps=request.fps

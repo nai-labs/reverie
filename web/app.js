@@ -470,6 +470,32 @@ function populateLoraDropdown() {
     if (savedPreset && (LORA_PRESETS[savedPreset] || savedPreset === 'custom')) {
         loraPresetSelect.value = savedPreset;
     }
+
+    // Also populate second LoRA dropdown
+    const loraPresetSelect2 = document.getElementById('lora-preset-select-2');
+    if (loraPresetSelect2) {
+        loraPresetSelect2.innerHTML = '';
+
+        // Add "None" option first
+        const noneOption = document.createElement('option');
+        noneOption.value = 'none';
+        noneOption.textContent = 'None';
+        loraPresetSelect2.appendChild(noneOption);
+
+        // Add preset options
+        for (const name of Object.keys(LORA_PRESETS)) {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            loraPresetSelect2.appendChild(option);
+        }
+
+        // Add custom option
+        const customOption2 = document.createElement('option');
+        customOption2.value = 'custom';
+        customOption2.textContent = 'Custom URL...';
+        loraPresetSelect2.appendChild(customOption2);
+    }
 }
 
 // Load presets on page load
@@ -516,6 +542,35 @@ const loraUrlInput = document.getElementById('lora-url');
 if (loraUrlInput) {
     loraUrlInput.addEventListener('input', () => {
         localStorage.setItem('lora_custom_url', loraUrlInput.value);
+    });
+}
+
+// Handle second LoRA dropdown
+const loraPresetSelect2 = document.getElementById('lora-preset-select-2');
+const customUrlGroup2 = document.getElementById('custom-url-group-2');
+const loraScale2Group = document.getElementById('lora-scale-2-group');
+
+if (loraPresetSelect2) {
+    loraPresetSelect2.addEventListener('change', () => {
+        const presetValue = loraPresetSelect2.value;
+        const isNone = presetValue === 'none';
+        const isCustom = presetValue === 'custom';
+
+        // Show/hide scale and custom URL fields
+        if (loraScale2Group) {
+            loraScale2Group.style.display = isNone ? 'none' : 'block';
+        }
+        if (customUrlGroup2) {
+            customUrlGroup2.style.display = isCustom ? 'block' : 'none';
+        }
+
+        // Pre-fill scale from preset
+        if (!isNone && !isCustom && LORA_PRESETS[presetValue]) {
+            const scaleInput2 = document.getElementById('lora-scale-2');
+            if (scaleInput2) {
+                scaleInput2.value = LORA_PRESETS[presetValue].scale;
+            }
+        }
     });
 }
 
@@ -585,12 +640,27 @@ async function generateLoraVideo() {
     const numFrames = parseInt(document.getElementById('lora-frames').value) || 81;
     const fps = parseInt(document.getElementById('lora-fps').value) || 16;
 
-    // Get LoRA URL from preset or custom input
+    // Get LoRA 1 URL from preset or custom input
     let loraUrl;
     if (presetValue === 'custom') {
         loraUrl = document.getElementById('lora-url').value.trim();
     } else {
         loraUrl = LORA_PRESETS[presetValue]?.url || '';
+    }
+
+    // Get LoRA 2 URL and scale (optional)
+    const preset2Select = document.getElementById('lora-preset-select-2');
+    const preset2Value = preset2Select ? preset2Select.value : 'none';
+    let loraUrl2 = null;
+    let loraScale2 = null;
+
+    if (preset2Value !== 'none') {
+        if (preset2Value === 'custom') {
+            loraUrl2 = document.getElementById('lora-url-2')?.value.trim() || null;
+        } else {
+            loraUrl2 = LORA_PRESETS[preset2Value]?.url || null;
+        }
+        loraScale2 = parseFloat(document.getElementById('lora-scale-2')?.value) || 1.0;
     }
 
     if (!prompt) {
@@ -605,7 +675,8 @@ async function generateLoraVideo() {
     loraModal.classList.add('hidden');
     const modelName = wanModel === 'wan-2.2-fast' ? 'WAN 2.2 Fast' : 'WAN 2.1';
     const presetName = presetValue === 'custom' ? 'Custom' : presetValue;
-    addSystemMessage(`Generating LoRA video with ${modelName} + ${presetName} (${numFrames} frames @ ${fps}fps)...`);
+    const lora2Info = loraUrl2 ? ` + ${preset2Value}` : '';
+    addSystemMessage(`Generating LoRA video with ${modelName} + ${presetName}${lora2Info} (${numFrames} frames @ ${fps}fps)...`);
 
     try {
         const response = await fetch(`${API_BASE}/generate/video/lora`, {
@@ -615,6 +686,8 @@ async function generateLoraVideo() {
                 prompt: prompt,
                 lora_url: loraUrl,
                 lora_scale: loraScale,
+                lora_url_2: loraUrl2,
+                lora_scale_2: loraScale2,
                 wan_model: wanModel,
                 num_frames: numFrames,
                 fps: fps

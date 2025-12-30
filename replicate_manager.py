@@ -577,7 +577,7 @@ class ReplicateManager:
         logger.info(f"Formatted CivitAI URL: {formatted_url[:80]}...")
         return formatted_url
 
-    async def generate_wan_lora_video(self, image_path: str, prompt: str, lora_url: str, lora_scale: float = 1.0, model: str = "wan-2.2-fast", num_frames: int = 81, fps: int = 16):
+    async def generate_wan_lora_video(self, image_path: str, prompt: str, lora_url: str, lora_scale: float = 1.0, lora_url_2: str = None, lora_scale_2: float = None, model: str = "wan-2.2-fast", num_frames: int = 81, fps: int = 16):
         """Generate a video using WAN with a custom LoRA.
         
         model options:
@@ -585,6 +585,8 @@ class ReplicateManager:
         - 'wan-2.1-lora': Uses hf_lora (CivitAI URLs)
         """
         logger.info(f"Generating WAN LoRA video with model: {model}, lora_scale: {lora_scale}, frames: {num_frames}, fps: {fps}")
+        if lora_url_2:
+            logger.info(f"Using second LoRA with scale: {lora_scale_2}")
         logger.info(f"Prompt: {prompt[:100]}...")
         
         # Get model identifier
@@ -632,9 +634,14 @@ class ReplicateManager:
                             'go_fast': True,
                             'num_frames': num_frames,
                             'frames_per_second': fps,
-                            'resolution': '480p'
+                            'resolution': '480p',
+                            'disable_safety_checker': True
                         }
                     }
+                    # Add second LoRA if provided
+                    if lora_url_2:
+                        payload['input']['lora_weights_transformer_2'] = lora_url_2
+                        payload['input']['lora_scale_transformer_2'] = lora_scale_2 or 1.0
                 else:  # wan-2.1-lora
                     # WAN 2.1 uses hf_lora
                     payload = {
