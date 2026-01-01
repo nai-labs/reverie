@@ -463,3 +463,79 @@ button {
     background: var(--glass-highlight);
     color: var(--text-primary);
 }
+
+/* LoRA Category Buttons */
+.lora-cat-btn {
+    padding: 6px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-panel);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lora-cat-btn:hover {
+    background: var(--glass-highlight);
+    color: var(--text-primary);
+}
+
+.lora-cat-btn.active {
+    background: var(--accent-gradient);
+    color: white;
+    border-color: transparent;
+}
+
+/* LoRA Grid Items */
+.lora-item {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-panel);
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.lora-item:hover {
+    background: var(--glass-highlight);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.lora-item.selected {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.3), rgba(129, 140, 248, 0.3));
+    border-color: #38bdf8;
+    color: var(--text-primary);
+}
+
+.lora-item .star {
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+}
+
+.lora-item .star:hover,
+.lora-item .star.favorited {
+    opacity: 1;
+}
+
+.lora-fav-item {
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(250, 204, 21, 0.2), rgba(251, 146, 60, 0.2));
+    border: 1px solid rgba(250, 204, 21, 0.3);
+    color: #fbbf24;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.lora-fav-item:hover {
+    background: linear-gradient(135deg, rgba(250, 204, 21, 0.3), rgba(251, 146, 60, 0.3));
+}

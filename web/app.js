@@ -430,72 +430,172 @@ const customUrlGroup = document.getElementById('custom-url-group');
 
 // LoRA Presets - loaded dynamically from server
 let LORA_PRESETS = {};
+let selectedLoraCategory = 'all';
+let selectedLora = null;
+let loraFavorites = JSON.parse(localStorage.getItem('lora_favorites') || '[]');
 
-// Load LoRA presets from server and populate dropdown
+// Load LoRA presets from server and render grid
 async function loadLoraPresets() {
     try {
         const response = await fetch(`${API_BASE}/lora-presets`);
         if (response.ok) {
             const data = await response.json();
             LORA_PRESETS = data.presets || {};
-            populateLoraDropdown();
+            renderLoraGrid();
+            renderFavorites();
+            populateLoraDropdown2();
         }
     } catch (error) {
         console.error('Failed to load LoRA presets:', error);
     }
 }
 
-function populateLoraDropdown() {
-    if (!loraPresetSelect) return;
+// Render the main LoRA grid based on selected category
+function renderLoraGrid() {
+    const grid = document.getElementById('lora-grid');
+    if (!grid) return;
 
-    // Clear existing options except "custom"
-    loraPresetSelect.innerHTML = '';
+    grid.innerHTML = '';
+
+    for (const [name, preset] of Object.entries(LORA_PRESETS)) {
+        const category = preset.category || 'uncategorized';
+        if (selectedLoraCategory !== 'all' && category !== selectedLoraCategory) continue;
+
+        const item = document.createElement('div');
+        item.className = 'lora-item' + (selectedLora === name ? ' selected' : '');
+
+        const isFav = loraFavorites.includes(name);
+        item.innerHTML = `
+            <span class="star ${isFav ? 'favorited' : ''}" data-name="${name}">⭐</span>
+            <span class="name">${name}</span>
+        `;
+
+        // Click on name to select
+        item.querySelector('.name').addEventListener('click', () => selectLora(name));
+
+        // Click on star to toggle favorite
+        item.querySelector('.star').addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleFavorite(name);
+        });
+
+        grid.appendChild(item);
+    }
+
+    // Add Custom URL option
+    const customItem = document.createElement('div');
+    customItem.className = 'lora-item' + (selectedLora === 'custom' ? ' selected' : '');
+    customItem.innerHTML = '<span class="name">📝 Custom URL...</span>';
+    customItem.addEventListener('click', () => selectLora('custom'));
+    grid.appendChild(customItem);
+}
+
+// Render favorites row
+function renderFavorites() {
+    const favContainer = document.getElementById('lora-favorites');
+    if (!favContainer) return;
+
+    favContainer.innerHTML = '';
+
+    if (loraFavorites.length === 0) {
+        favContainer.innerHTML = '<span style="color: #666; font-size: 0.7rem;">Click ⭐ to add favorites</span>';
+        return;
+    }
+
+    for (const name of loraFavorites) {
+        if (!LORA_PRESETS[name]) continue;
+
+        const item = document.createElement('div');
+        item.className = 'lora-fav-item';
+        item.textContent = name;
+        item.addEventListener('click', () => selectLora(name));
+        favContainer.appendChild(item);
+    }
+}
+
+// Select a LoRA
+function selectLora(name) {
+    selectedLora = name;
+
+    // Update hidden input for form submission
+    const presetSelect = document.getElementById('lora-preset-select');
+    if (presetSelect) presetSelect.value = name;
+
+    // Update display
+    const nameDisplay = document.getElementById('selected-lora-name');
+    if (nameDisplay) nameDisplay.textContent = name === 'custom' ? '(Custom)' : `(${name})`;
+
+    // Show/hide custom URL field
+    const customGroup = document.getElementById('custom-url-group');
+    if (customGroup) customGroup.style.display = name === 'custom' ? 'block' : 'none';
+
+    // Pre-fill prompt and scale
+    if (name !== 'custom' && LORA_PRESETS[name]) {
+        const promptField = document.getElementById('lora-prompt');
+        const scaleField = document.getElementById('lora-scale');
+        if (promptField) promptField.value = LORA_PRESETS[name].prompt || '';
+        if (scaleField) scaleField.value = LORA_PRESETS[name].scale || 1.0;
+    }
+
+    renderLoraGrid(); // Re-render to update selection state
+}
+
+// Toggle favorite status
+function toggleFavorite(name) {
+    const idx = loraFavorites.indexOf(name);
+    if (idx === -1) {
+        loraFavorites.push(name);
+    } else {
+        loraFavorites.splice(idx, 1);
+    }
+    localStorage.setItem('lora_favorites', JSON.stringify(loraFavorites));
+    renderLoraGrid();
+    renderFavorites();
+}
+
+// Populate LoRA 2 dropdown (simplified)
+function populateLoraDropdown2() {
+    const loraPresetSelect2 = document.getElementById('lora-preset-select-2');
+    if (!loraPresetSelect2) return;
+
+    loraPresetSelect2.innerHTML = '';
+
+    // Add "None" option first
+    const noneOption = document.createElement('option');
+    noneOption.value = 'none';
+    noneOption.textContent = 'None';
+    loraPresetSelect2.appendChild(noneOption);
 
     // Add preset options
     for (const name of Object.keys(LORA_PRESETS)) {
         const option = document.createElement('option');
         option.value = name;
         option.textContent = name;
-        loraPresetSelect.appendChild(option);
+        loraPresetSelect2.appendChild(option);
     }
 
-    // Add custom option at the end
+    // Add custom option
     const customOption = document.createElement('option');
     customOption.value = 'custom';
     customOption.textContent = 'Custom URL...';
-    loraPresetSelect.appendChild(customOption);
+    loraPresetSelect2.appendChild(customOption);
+}
 
-    // Restore saved preset if any
-    const savedPreset = localStorage.getItem('lora_preset');
-    if (savedPreset && (LORA_PRESETS[savedPreset] || savedPreset === 'custom')) {
-        loraPresetSelect.value = savedPreset;
-    }
+// Category tab click handlers
+document.querySelectorAll('.lora-cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.lora-cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedLoraCategory = btn.dataset.cat;
+        renderLoraGrid();
+    });
+});
 
-    // Also populate second LoRA dropdown
-    const loraPresetSelect2 = document.getElementById('lora-preset-select-2');
-    if (loraPresetSelect2) {
-        loraPresetSelect2.innerHTML = '';
-
-        // Add "None" option first
-        const noneOption = document.createElement('option');
-        noneOption.value = 'none';
-        noneOption.textContent = 'None';
-        loraPresetSelect2.appendChild(noneOption);
-
-        // Add preset options
-        for (const name of Object.keys(LORA_PRESETS)) {
-            const option = document.createElement('option');
-            option.value = name;
-            option.textContent = name;
-            loraPresetSelect2.appendChild(option);
-        }
-
-        // Add custom option
-        const customOption2 = document.createElement('option');
-        customOption2.value = 'custom';
-        customOption2.textContent = 'Custom URL...';
-        loraPresetSelect2.appendChild(customOption2);
-    }
+// Keep old function name for compatibility
+function populateLoraDropdown() {
+    renderLoraGrid();
+    renderFavorites();
+    populateLoraDropdown2();
 }
 
 // Load presets on page load
