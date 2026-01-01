@@ -20,6 +20,7 @@
             <header>
                 <img src="logo.png" alt="Logo" class="logo-img">
                 <div class="controls">
+                    <button id="sessions-btn" class="icon-btn" title="Browse Sessions">📂</button>
                     <button id="export-btn" class="icon-btn" title="Export Gallery">📥</button>
                     <button id="settings-btn" class="icon-btn">⚙️</button>
                 </div>
@@ -57,6 +58,29 @@
                     </select>
                     <button id="gen-video-btn" class="action-btn">🎥 Generate</button>
                     <button id="lora-video-btn" class="action-btn">🎬 LoRA</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sessions Browser Modal -->
+        <div id="sessions-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>📂 Resume Session</h2>
+                <div class="form-group">
+                    <input type="text" id="session-search" placeholder="Search sessions...">
+                </div>
+                <div class="form-group">
+                    <select id="session-character-filter">
+                        <option value="">All Characters</option>
+                    </select>
+                </div>
+                <div id="sessions-list" class="sessions-list">
+                    <!-- Sessions will be populated by JS -->
+                    <div class="loading">Loading sessions...</div>
+                </div>
+                <div class="modal-actions">
+                    <button id="new-session-btn">➕ New Session</button>
+                    <button id="close-sessions-btn">Close</button>
                 </div>
             </div>
         </div>

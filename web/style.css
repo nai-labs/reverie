@@ -539,3 +539,85 @@ button {
 .lora-fav-item:hover {
     background: linear-gradient(135deg, rgba(250, 204, 21, 0.3), rgba(251, 146, 60, 0.3));
 }
+
+/* Sessions List */
+.sessions-list {
+    max-height: 400px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+}
+
+.session-card {
+    padding: 15px;
+    border-radius: 12px;
+    background: var(--glass-panel);
+    border: 1px solid var(--glass-border);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.session-card:hover {
+    background: var(--glass-highlight);
+    border-color: rgba(56, 189, 248, 0.4);
+    transform: translateY(-2px);
+}
+
+.session-card .session-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.session-card .session-character {
+    font-weight: 600;
+    color: #38bdf8;
+}
+
+.session-card .session-date {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.session-card .session-preview {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.session-card .session-id {
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 6px;
+}
+
+.sessions-list .loading,
+.sessions-list .no-sessions {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 20px;
+}
+
+#new-session-btn {
+    background: var(--accent-gradient);
+    color: white;
+}
+
+#close-sessions-btn {
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+}
+
+#close-sessions-btn:hover {
+    background: var(--glass-highlight);
+    color: var(--text-primary);
+}

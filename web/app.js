@@ -4,6 +4,7 @@ const API_BASE = '/api';
 const urlParams = new URLSearchParams(window.location.search);
 let user = urlParams.get('user') || "User";
 let character = urlParams.get('character') || "Anika";
+let resumeSessionParam = urlParams.get('resume') || null;  // Optional session to resume
 let sessionPassword = null;
 
 // Elements
@@ -33,12 +34,13 @@ async function init() {
         const urlParams = new URLSearchParams(window.location.search);
         const paramUser = urlParams.get('user');
         const paramChar = urlParams.get('character');
+        const paramResume = urlParams.get('resume');
 
         if (paramUser && paramChar) {
             // We are the launcher/host, force init
             user = paramUser;
             character = paramChar;
-            await initializeSession(user, character);
+            await initializeSession(user, character, paramResume);
         } else {
             // We are a remote client, check for existing session
             try {
@@ -114,6 +116,19 @@ async function loadHistory() {
                     addMessage(user, msg.content, 'user');
                 } else if (msg.role === 'assistant') {
                     addMessage(character, msg.content, 'bot');
+
+                    // Display attached media
+                    if (msg.media && msg.media.length > 0) {
+                        msg.media.forEach(media => {
+                            if (media.type === 'image') {
+                                addImage(media.url, 'Restored image');
+                            } else if (media.type === 'audio') {
+                                addAudio(media.url);
+                            } else if (media.type === 'video') {
+                                addVideo(media.url, 'Restored video');
+                            }
+                        });
+                    }
                 } else if (msg.role === 'system') {
                     addSystemMessage(msg.content);
                 }
@@ -125,18 +140,28 @@ async function loadHistory() {
     }
 }
 
-async function initializeSession(user, character) {
+async function initializeSession(user, character, resumeSessionId = null) {
+    const body = { user, character };
+    if (resumeSessionId) {
+        body.resume_session = resumeSessionId;
+    }
+
     const response = await fetch(`${API_BASE}/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user, character })
+        body: JSON.stringify(body)
     });
     const data = await response.json();
     console.log('Session initialized:', data);
-    addSystemMessage(`Connected to ${character}.`);
 
-    if (data.initial_message) {
-        addMessage(character, data.initial_message, 'bot');
+    if (data.resumed) {
+        addSystemMessage(`Resumed session with ${character}.`);
+        await loadHistory();
+    } else {
+        addSystemMessage(`Connected to ${character}.`);
+        if (data.initial_message) {
+            addMessage(character, data.initial_message, 'bot');
+        }
     }
 }
 
@@ -288,6 +313,21 @@ function addVideo(url, prompt) {
     scrollToBottom();
 }
 
+function addAudio(url) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message bot';
+    msgDiv.innerHTML = `
+        <div class="content">
+            <audio controls>
+                <source src="${url}" type="audio/mpeg">
+                Your browser does not support the audio element.
+            </audio>
+        </div>
+    `;
+    messagesDiv.appendChild(msgDiv);
+    scrollToBottom();
+}
+
 function scrollToBottom() {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
@@ -382,6 +422,149 @@ async function saveSettings() {
         addSystemMessage('Failed to save settings.');
     }
 }
+
+// ============ SESSION BROWSER ============
+const sessionsBtn = document.getElementById('sessions-btn');
+const sessionsModal = document.getElementById('sessions-modal');
+const closeSessionsBtn = document.getElementById('close-sessions-btn');
+const newSessionBtn = document.getElementById('new-session-btn');
+const sessionsList = document.getElementById('sessions-list');
+const sessionSearch = document.getElementById('session-search');
+const sessionCharacterFilter = document.getElementById('session-character-filter');
+
+let allSessions = [];
+
+async function loadSessions() {
+    try {
+        const response = await fetch(`${API_BASE}/sessions`);
+        if (response.ok) {
+            const data = await response.json();
+            allSessions = data.sessions || [];
+
+            // Populate character filter
+            const characters = [...new Set(allSessions.map(s => s.character))];
+            if (sessionCharacterFilter) {
+                sessionCharacterFilter.innerHTML = '<option value="">All Characters</option>';
+                characters.forEach(char => {
+                    const opt = document.createElement('option');
+                    opt.value = char;
+                    opt.textContent = char;
+                    sessionCharacterFilter.appendChild(opt);
+                });
+            }
+
+            renderSessions(allSessions);
+        }
+    } catch (error) {
+        console.error('Failed to load sessions:', error);
+        if (sessionsList) {
+            sessionsList.innerHTML = '<div class="no-sessions">Failed to load sessions</div>';
+        }
+    }
+}
+
+function renderSessions(sessions) {
+    if (!sessionsList) return;
+
+    if (sessions.length === 0) {
+        sessionsList.innerHTML = '<div class="no-sessions">No sessions found</div>';
+        return;
+    }
+
+    sessionsList.innerHTML = '';
+
+    sessions.forEach(session => {
+        const card = document.createElement('div');
+        card.className = 'session-card';
+
+        // Format date
+        let dateStr = 'Unknown date';
+        if (session.created_at) {
+            const date = new Date(session.created_at);
+            dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        card.innerHTML = `
+            <div class="session-header">
+                <span class="session-character">${session.character || 'Unknown'}</span>
+                <span class="session-date">${dateStr}</span>
+            </div>
+            <div class="session-preview">${session.last_message_preview || '(No preview)'}</div>
+            <div class="session-id">${session.folder_name || session.session_id}</div>
+        `;
+
+        card.addEventListener('click', () => resumeSession(session.folder_name || session.session_id));
+        sessionsList.appendChild(card);
+    });
+}
+
+function filterSessions() {
+    const searchTerm = sessionSearch?.value.toLowerCase() || '';
+    const charFilter = sessionCharacterFilter?.value || '';
+
+    let filtered = allSessions;
+
+    if (charFilter) {
+        filtered = filtered.filter(s => s.character === charFilter);
+    }
+
+    if (searchTerm) {
+        filtered = filtered.filter(s =>
+            (s.session_id || '').toLowerCase().includes(searchTerm) ||
+            (s.character || '').toLowerCase().includes(searchTerm) ||
+            (s.last_message_preview || '').toLowerCase().includes(searchTerm)
+        );
+    }
+
+    renderSessions(filtered);
+}
+
+function openSessionBrowser() {
+    if (sessionsModal) {
+        sessionsModal.classList.remove('hidden');
+        loadSessions();
+    }
+}
+
+function closeSessionBrowser() {
+    if (sessionsModal) {
+        sessionsModal.classList.add('hidden');
+    }
+}
+
+async function resumeSession(sessionId) {
+    closeSessionBrowser();
+    messagesDiv.innerHTML = '';
+    addSystemMessage(`Resuming session ${sessionId}...`);
+
+    try {
+        await initializeSession(user, character, sessionId);
+    } catch (error) {
+        console.error('Failed to resume session:', error);
+        addSystemMessage('Failed to resume session.');
+    }
+}
+
+async function startNewSession() {
+    closeSessionBrowser();
+    messagesDiv.innerHTML = '';
+    addSystemMessage('Starting new session...');
+
+    try {
+        await initializeSession(user, character, null);
+    } catch (error) {
+        console.error('Failed to start new session:', error);
+        addSystemMessage('Failed to start new session.');
+    }
+}
+
+// Session browser event listeners
+if (sessionsBtn) sessionsBtn.addEventListener('click', openSessionBrowser);
+if (closeSessionsBtn) closeSessionsBtn.addEventListener('click', closeSessionBrowser);
+if (newSessionBtn) newSessionBtn.addEventListener('click', startNewSession);
+if (sessionSearch) sessionSearch.addEventListener('input', filterSessions);
+if (sessionCharacterFilter) sessionCharacterFilter.addEventListener('change', filterSessions);
+// ============ END SESSION BROWSER ============
 
 // Event Listeners
 if (submitPasswordBtn) {

@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from datetime import datetime
 from characters import characters
 from database_manager import DatabaseManager
@@ -80,9 +81,12 @@ class ConversationManager:
             counter += 1
         os.makedirs(self.subfolder_path)
         
-        self.log_file = os.path.join(self.subfolder_path, f"{log_file_name}.txt")
-        self.session_id = log_file_name # Use log file name as session ID
+        self.log_file = os.path.join(self.subfolder_path, f"{subfolder_name}.txt")
+        self.session_id = subfolder_name  # Use actual folder name as session ID
         self.log_file_name_response = None
+        
+        # Create session metadata
+        self.save_metadata()
 
     def save_message_to_log(self, role, message):
         if self.log_file:
@@ -91,27 +95,166 @@ class ConversationManager:
                 file.write(f"[{timestamp}] **{role}**: {message}\n")
 
     def resume_conversation(self, directory_path):
+        """Resume a conversation from an existing session folder."""
         full_directory_path = os.path.join(self.output_folder, directory_path)
         if os.path.exists(full_directory_path):
-            log_files = [f for f in os.listdir(full_directory_path) if f.endswith(".txt")]
+            # Find log file (exclude status.txt and metadata)
+            log_files = [f for f in os.listdir(full_directory_path) 
+                        if f.endswith(".txt") and f != "status.txt"]
             if log_files:
                 log_file_path = os.path.join(full_directory_path, log_files[0])
                 with open(log_file_path, 'r', encoding='utf-8') as file:
                     log_content = file.read()
 
-                conversation_pattern = re.compile(r'\*\*User\*\*: (.*?)\n.*?\*\*Bot\*\*: (.*?)\n', re.DOTALL)
-                matches = conversation_pattern.findall(log_content)
+                # Improved regex to handle multi-line messages
+                # Pattern: [timestamp] **Role**: message
+                message_pattern = re.compile(
+                    r'\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] \*\*(User|Bot|Assistant|System)\*\*: (.*?)(?=\n\[\d{4}-\d{2}-\d{2}|$)',
+                    re.DOTALL
+                )
+                matches = message_pattern.findall(log_content)
 
                 self.conversation = []
-                for user_msg, bot_msg in matches:
-                    self.conversation.append({"role": "user", "content": user_msg})
-                    self.conversation.append({"role": "assistant", "content": bot_msg})
+                for role, content in matches:
+                    content = content.strip()
+                    
+                    # Handle media log entries - attach to previous message
+                    if content.startswith("Generated selfie:"):
+                        filename = content.replace("Generated selfie:", "").strip()
+                        if self.conversation and self.conversation[-1]["role"] == "assistant":
+                            if "media" not in self.conversation[-1]:
+                                self.conversation[-1]["media"] = []
+                            self.conversation[-1]["media"].append({
+                                "type": "image",
+                                "filename": filename,
+                                "url": f"/output/{directory_path}/{filename}"
+                            })
+                        continue
+                    
+                    if content.startswith("Generated audio:"):
+                        filename = content.replace("Generated audio:", "").strip()
+                        if self.conversation and self.conversation[-1]["role"] == "assistant":
+                            if "media" not in self.conversation[-1]:
+                                self.conversation[-1]["media"] = []
+                            self.conversation[-1]["media"].append({
+                                "type": "audio",
+                                "filename": filename,
+                                "url": f"/output/{directory_path}/{filename}"
+                            })
+                        continue
+                    
+                    normalized_role = "user" if role == "User" else "assistant"
+                    self.conversation.append({"role": normalized_role, "content": content})
 
+                # Scan for video files that aren't logged to txt
+                video_files = [f for f in os.listdir(full_directory_path) if f.endswith('.mp4')]
+                if video_files and self.conversation:
+                    # Find the last assistant message or create one for videos
+                    last_assistant_idx = None
+                    for i in range(len(self.conversation) - 1, -1, -1):
+                        if self.conversation[i]["role"] == "assistant":
+                            last_assistant_idx = i
+                            break
+                    
+                    if last_assistant_idx is not None:
+                        if "media" not in self.conversation[last_assistant_idx]:
+                            self.conversation[last_assistant_idx]["media"] = []
+                        
+                        for video_file in sorted(video_files):
+                            self.conversation[last_assistant_idx]["media"].append({
+                                "type": "video",
+                                "filename": video_file,
+                                "url": f"/output/{directory_path}/{video_file}"
+                            })
+
+                # Reuse the existing folder (don't create new one)
                 self.subfolder_path = full_directory_path
                 self.log_file = log_file_path
+                self.session_id = directory_path  # Use folder name as session ID
 
                 return True
         return False
+    
+    def save_metadata(self):
+        """Save session metadata to JSON file."""
+        if not self.subfolder_path:
+            return
+        
+        metadata = {
+            "session_id": self.session_id,
+            "character": self.character_name,
+            "created_at": datetime.now().isoformat(),
+            "last_message_preview": ""
+        }
+        
+        metadata_path = os.path.join(self.subfolder_path, "session_metadata.json")
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, indent=2)
+    
+    def update_metadata_preview(self):
+        """Update the last message preview in metadata."""
+        if not self.subfolder_path:
+            return
+        
+        metadata_path = os.path.join(self.subfolder_path, "session_metadata.json")
+        if os.path.exists(metadata_path):
+            try:
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+                
+                # Get last assistant message for preview
+                for msg in reversed(self.conversation):
+                    if msg["role"] == "assistant":
+                        preview = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
+                        metadata["last_message_preview"] = preview
+                        break
+                
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, indent=2)
+            except Exception:
+                pass  # Silently fail on metadata update errors
+    
+    @staticmethod
+    def get_all_sessions(output_folder=None):
+        """Get all sessions with their metadata."""
+        if output_folder is None:
+            output_folder = os.path.join(os.getcwd(), 'output')
+        
+        sessions = []
+        if not os.path.exists(output_folder):
+            return sessions
+        
+        for folder_name in os.listdir(output_folder):
+            folder_path = os.path.join(output_folder, folder_name)
+            if not os.path.isdir(folder_path):
+                continue
+            
+            metadata_path = os.path.join(folder_path, "session_metadata.json")
+            if os.path.exists(metadata_path):
+                try:
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        metadata = json.load(f)
+                    metadata["folder_name"] = folder_name
+                    sessions.append(metadata)
+                except Exception:
+                    pass
+            else:
+                # Legacy session without metadata - create basic info from folder
+                log_files = [f for f in os.listdir(folder_path) if f.endswith('.txt') and f != 'status.txt']
+                if log_files:
+                    # Get folder creation time
+                    created_time = datetime.fromtimestamp(os.path.getctime(folder_path))
+                    sessions.append({
+                        "session_id": folder_name,
+                        "folder_name": folder_name,
+                        "character": "Unknown",
+                        "created_at": created_time.isoformat(),
+                        "last_message_preview": "(Legacy session)"
+                    })
+        
+        # Sort by created_at descending (most recent first)
+        sessions.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return sessions
 
     def save_conversation(self):
         if self.log_file:

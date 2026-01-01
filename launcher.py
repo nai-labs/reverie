@@ -16,6 +16,7 @@ from users import users, list_users
 from characters import characters
 from config import CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_STEPS, IMAGE_GUIDANCE_SCALE, IMAGE_SAMPLER, DEFAULT_SD_MODEL
 from database_manager import DatabaseManager
+from conversation_manager import ConversationManager
 from chub_importer import ChubImporter
 from character_creator import CharacterCreator
 
@@ -325,7 +326,7 @@ class BotLauncher:
 
     def setup_dashboard(self):
         self.tab_dashboard.grid_columnconfigure(0, weight=1)
-        self.tab_dashboard.grid_rowconfigure(1, weight=1)  # Process list expands
+        self.tab_dashboard.grid_rowconfigure(3, weight=1)  # Process list expands (row 3 now)
         
         # --- Quick Deploy Section ---
         deploy_frame = ctk.CTkFrame(
@@ -452,13 +453,65 @@ class BotLauncher:
             font=("Segoe UI", 11)
         )
         self.delete_char_btn.pack(side="left", padx=5)
+        
+        # --- Session Resume Section ---
+        session_frame = ctk.CTkFrame(
+            self.tab_dashboard,
+            fg_color=COLORS["bg_secondary"],
+            border_color=COLORS["border"],
+            border_width=1,
+            corner_radius=10
+        )
+        session_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            session_frame, 
+            text="Resume Session:", 
+            font=("Segoe UI", 12, "bold"), 
+            text_color=COLORS["text_primary"]
+        ).pack(side="left", padx=10)
+        
+        self.session_var = ctk.StringVar(value="New Session")
+        self.session_combo = ctk.CTkComboBox(
+            session_frame,
+            variable=self.session_var,
+            values=["New Session"],
+            width=300,
+            fg_color=COLORS["input_bg"],
+            button_color=COLORS["accent_cyan"],
+            button_hover_color=COLORS["accent_purple"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text_primary"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_hover_color=COLORS["hover"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
+        self.session_combo.pack(side="left", padx=5)
+        
+        self.refresh_sessions_btn = ctk.CTkButton(
+            session_frame,
+            text="🔄 Refresh",
+            command=self.refresh_session_list,
+            width=80,
+            fg_color=COLORS["input_bg"],
+            hover_color=COLORS["hover"],
+            border_color=COLORS["border"],
+            border_width=1,
+            text_color=COLORS["text_primary"],
+            font=("Segoe UI", 11)
+        )
+        self.refresh_sessions_btn.pack(side="left", padx=5)
+        
+        # Load sessions on startup
+        self.refresh_session_list()
+        
         # --- Process Monitor Section ---
         ctk.CTkLabel(
             self.tab_dashboard,
             text="Active Bots",
             font=("Segoe UI", 16, "bold"),
             text_color=COLORS["text_primary"]
-        ).grid(row=1, column=0, sticky="w", padx=10, pady=(10, 0))
+        ).grid(row=2, column=0, sticky="w", padx=10, pady=(10, 0))
         
         # Scrollable frame for processes
         self.process_list_frame = ctk.CTkScrollableFrame(
@@ -471,12 +524,12 @@ class BotLauncher:
             scrollbar_button_color=COLORS["accent_cyan"],
             scrollbar_button_hover_color=COLORS["accent_purple"]
         )
-        self.process_list_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=10)
+        self.process_list_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=10)
         self.process_list_frame.grid_columnconfigure(1, weight=1)  # Character column expands
         
         # Footer buttons
         footer_frame = ctk.CTkFrame(self.tab_dashboard, fg_color="transparent")
-        footer_frame.grid(row=3, column=0, sticky="ew", padx=10, pady=10)
+        footer_frame.grid(row=4, column=0, sticky="ew", padx=10, pady=10)
         
         ctk.CTkButton(
             footer_frame,
@@ -862,6 +915,30 @@ class BotLauncher:
             self.conversation_windows[pid].window.destroy()
             del self.conversation_windows[pid]
 
+    def refresh_session_list(self):
+        """Load available sessions from output folder."""
+        try:
+            sessions = ConversationManager.get_all_sessions()
+            session_options = ["New Session"]
+            
+            for session in sessions[:50]:  # Limit to 50 most recent
+                char = session.get("character", "?")
+                folder = session.get("folder_name", session.get("session_id", "?"))
+                preview = session.get("last_message_preview", "")[:30]
+                display_name = f"{char}: {folder}"
+                if preview:
+                    display_name += f" - {preview}..."
+                session_options.append(display_name)
+            
+            self.session_combo.configure(values=session_options)
+            # Store mapping of display names to folder names
+            self._session_map = {"New Session": None}
+            for i, session in enumerate(sessions[:50]):
+                folder = session.get("folder_name", session.get("session_id"))
+                self._session_map[session_options[i + 1]] = folder
+        except Exception as e:
+            print(f"Error loading sessions: {e}")
+
     def deploy_bot(self):
         user = self.user_var.get()
         char = self.char_var.get()
@@ -873,7 +950,16 @@ class BotLauncher:
             # Open browser
             import webbrowser
             import urllib.parse
-            query_params = urllib.parse.urlencode({'user': user, 'character': char})
+            
+            # Check if resuming a session
+            selected_session = self.session_var.get()
+            resume_folder = getattr(self, '_session_map', {}).get(selected_session)
+            
+            params = {'user': user, 'character': char}
+            if resume_folder:
+                params['resume'] = resume_folder
+            
+            query_params = urllib.parse.urlencode(params)
             webbrowser.open(f"http://localhost:8000?{query_params}")
             
             # Use cmd /k to keep window open on error for debugging

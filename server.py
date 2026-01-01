@@ -70,6 +70,7 @@ state = AppState()
 class InitRequest(BaseModel):
     user: str
     character: str
+    resume_session: Optional[str] = None  # Optional session folder to resume
 
 class ChatRequest(BaseModel):
     message: str
@@ -142,8 +143,22 @@ async def init_session(request: InitRequest):
     # Initialize ConversationManager
     state.conversation_manager = ConversationManager(state.character_name) 
     
-    # Create/Load session
-    state.conversation_manager.set_log_file("latest_session") # Or use a specific name
+    initial_message = None
+    resumed = False
+    
+    # Check if resuming an existing session
+    if request.resume_session:
+        success = state.conversation_manager.resume_conversation(request.resume_session)
+        if success:
+            resumed = True
+            logger.info(f"Resumed session: {request.resume_session}")
+        else:
+            logger.warning(f"Failed to resume session: {request.resume_session}, starting new session")
+            state.conversation_manager.set_log_file("latest_session")
+    else:
+        # Create new session
+        state.conversation_manager.set_log_file("latest_session")
+    
     session_id = state.conversation_manager.session_id
     
     # Initialize ImageManager
@@ -152,15 +167,12 @@ async def init_session(request: InitRequest):
     # Initialize TTSManager
     state.tts_manager = TTSManager(state.character_name, state.conversation_manager)
     
-    initial_message = None
-    # Check for scenario and generate initial message
-    if state.character_name in characters:
+    # Only generate initial message for NEW sessions (not resumed ones)
+    if not resumed and state.character_name in characters:
         scenario = characters[state.character_name].get("scenario")
         if scenario:
             logger.info(f"Generating initial message for scenario: {scenario}")
             try:
-                # Use APIManager to generate response based on scenario
-                # We pass the scenario as the message, but with empty history
                 initial_message = await state.api_manager.generate_response(
                     message=scenario,
                     conversation=[],
@@ -173,10 +185,11 @@ async def init_session(request: InitRequest):
                 logger.error(f"Failed to generate initial message: {e}")
 
     return {
-        "status": "initialized", 
+        "status": "resumed" if resumed else "initialized", 
         "session_id": session_id, 
         "character": state.character_name,
-        "initial_message": initial_message
+        "initial_message": initial_message,
+        "resumed": resumed
     }
 
 @app.get("/api/session")
@@ -198,6 +211,17 @@ async def get_session():
         "session_id": state.conversation_manager.session_id if state.conversation_manager else None,
         "requires_password": requires_password
     }
+
+@app.get("/api/sessions")
+async def get_sessions(character: Optional[str] = None):
+    """Get all available sessions for resuming. Optionally filter by character."""
+    sessions = ConversationManager.get_all_sessions()
+    
+    # Filter by character if specified
+    if character:
+        sessions = [s for s in sessions if s.get("character") == character]
+    
+    return {"sessions": sessions}
 
 class AuthRequest(BaseModel):
     password: str
@@ -222,19 +246,25 @@ async def get_history(request: Request): # Import Request from fastapi
     password = request.headers.get("X-Remote-Password")
     authorized = False
     
-    try:
-        if os.path.exists("user_settings.json"):
-            with open("user_settings.json", "r") as f:
-                settings = json.load(f)
-                stored_password = settings.get("remote_password")
-                if not stored_password: # No password set
-                    authorized = True
-                elif password == stored_password:
-                    authorized = True
-        else:
-            authorized = True # No settings file
-    except:
-        pass
+    # Localhost (host machine) is always authorized
+    client_host = request.client.host if request.client else None
+    if client_host in ("127.0.0.1", "localhost", "::1"):
+        authorized = True
+    
+    if not authorized:
+        try:
+            if os.path.exists("user_settings.json"):
+                with open("user_settings.json", "r") as f:
+                    settings = json.load(f)
+                    stored_password = settings.get("remote_password")
+                    if not stored_password: # No password set
+                        authorized = True
+                    elif password == stored_password:
+                        authorized = True
+            else:
+                authorized = True # No settings file
+        except:
+            pass
         
     if not authorized:
          raise HTTPException(status_code=401, detail="Unauthorized")
