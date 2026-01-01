@@ -41,6 +41,7 @@ characters.py
 imported_characters.json
 latest_public_url.txt
 lora_presets.json
+image_prompts.json
 custom_loras/
 
 

@@ -580,6 +580,7 @@ class LoraVideoRequest(BaseModel):
     wan_model: str = "wan-2.1-lora"  # wan-2.2-fast for HuggingFace, wan-2.1-lora for CivitAI
     num_frames: int = 81
     fps: int = 16
+    use_preview_image: bool = False  # If true, use the most recently generated image
 
 @app.post("/api/generate/video/lora")
 async def generate_video_lora(request: LoraVideoRequest):
@@ -591,10 +592,13 @@ async def generate_video_lora(request: LoraVideoRequest):
     if not state.conversation_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
     
-    # 1. Get last image
+    # 1. Get image - either the preview (last generated) or last selfie
     image_path = state.conversation_manager.get_last_selfie_path()
     if not image_path or not os.path.exists(image_path):
         raise HTTPException(status_code=400, detail="No recent image found. Please generate an image first.")
+    
+    if request.use_preview_image:
+        logger.info(f"[LoRA Video] Using preview image: {image_path}")
     
     logger.info(f"[LoRA Video] Model: {request.wan_model}")
     logger.info(f"[LoRA Video] Prompt: {request.prompt[:50]}...")
@@ -719,6 +723,22 @@ async def get_lora_presets():
     except Exception as e:
         logger.error(f"Error loading lora_presets.json: {e}")
         return {"presets": {}}
+
+@app.get("/api/image-prompt-components")
+async def get_image_prompt_components():
+    """Serve image prompt components from image_prompts.json file."""
+    prompts_path = os.path.join(os.getcwd(), "image_prompts.json")
+    
+    if not os.path.exists(prompts_path):
+        return {"components": {}}
+    
+    try:
+        with open(prompts_path, 'r', encoding='utf-8') as f:
+            components = json.load(f)
+        return {"components": components}
+    except Exception as e:
+        logger.error(f"Error loading image_prompts.json: {e}")
+        return {"components": {}}
 
 @app.get("/api/settings")
 async def get_settings():

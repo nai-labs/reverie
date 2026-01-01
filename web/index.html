@@ -163,6 +163,61 @@
                     <label for="lora-fps">FPS (5-30)</label>
                     <input type="number" id="lora-fps" value="16" min="5" max="30" step="1">
                 </div>
+
+                <!-- Debug Mode Section -->
+                <div class="form-group"
+                    style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 15px; margin-top: 15px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="debug-mode-toggle">
+                        <span>🔧 Debug Mode (Build Image Prompt)</span>
+                    </label>
+                </div>
+
+                <div id="debug-mode-section" style="display: none;">
+                    <!-- Image Preview -->
+                    <div id="debug-preview-container" style="display: none; margin-bottom: 15px; text-align: center;">
+                        <img id="debug-preview-image" style="max-width: 100%; max-height: 300px; border-radius: 8px;">
+                    </div>
+
+                    <!-- Component Dropdowns -->
+                    <div class="form-group">
+                        <label for="prompt-character">Character</label>
+                        <select id="prompt-character">
+                            <option value="">-- Select --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt-pose">Pose</label>
+                        <select id="prompt-pose">
+                            <option value="">-- Select --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt-setting">Setting</label>
+                        <select id="prompt-setting">
+                            <option value="">-- Select --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="prompt-style">Style</label>
+                        <select id="prompt-style">
+                            <option value="">-- Select --</option>
+                        </select>
+                    </div>
+
+                    <!-- Built Prompt (Editable) -->
+                    <div class="form-group">
+                        <label for="debug-image-prompt">Image Prompt (editable)</label>
+                        <textarea id="debug-image-prompt" rows="3"
+                            placeholder="Built prompt will appear here..."></textarea>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <button type="button" id="generate-preview-btn" style="flex: 1;">📷 Generate Preview</button>
+                        <button type="button" id="use-chat-prompt-btn" style="flex: 0;">📝 From Chat</button>
+                    </div>
+                </div>
+
                 <div class="modal-actions">
                     <button id="generate-lora-btn">Generate</button>
                     <button id="sync-loras-btn">📥 Sync to Local</button>

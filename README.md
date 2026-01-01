@@ -72,6 +72,16 @@ A powerful, standalone local AI roleplay platform that brings your characters to
 4.  (Optional) Generate a reference image for face swap.
 5.  Click **Import Character** to add to your collection.
 
+### Creating Custom Characters
+
+1.  In the launcher, click **Create Character**.
+2.  Enter a character name and short description.
+3.  Click **Generate Prompts** → LLM generates system prompt and image prompt.
+4.  Review and edit the prompts as needed.
+5.  Enter an ElevenLabs Voice ID (optional).
+6.  Click **Generate Image** to preview the reference image for face swap.
+7.  Click **Save Character** to add to your collection.
+
 ## 🎬 LoRA Video Generation
 
 Generate videos with custom LoRA styles using the WAN 2.1/2.2 models on Replicate.

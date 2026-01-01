@@ -501,6 +501,168 @@ function populateLoraDropdown() {
 // Load presets on page load
 loadLoraPresets();
 
+// ============ DEBUG MODE ============
+let IMAGE_PROMPT_COMPONENTS = {};
+let debugPreviewImagePath = null;  // Store path of generated preview image
+
+// Load image prompt components from server
+async function loadImagePromptComponents() {
+    try {
+        const response = await fetch(`${API_BASE}/image-prompt-components`);
+        if (response.ok) {
+            const data = await response.json();
+            IMAGE_PROMPT_COMPONENTS = data.components || {};
+            populatePromptDropdowns();
+        }
+    } catch (error) {
+        console.error('Failed to load image prompt components:', error);
+    }
+}
+
+function populatePromptDropdowns() {
+    const dropdowns = {
+        'prompt-character': IMAGE_PROMPT_COMPONENTS.character || [],
+        'prompt-pose': IMAGE_PROMPT_COMPONENTS.pose || [],
+        'prompt-setting': IMAGE_PROMPT_COMPONENTS.setting || [],
+        'prompt-style': IMAGE_PROMPT_COMPONENTS.style || []
+    };
+
+    for (const [id, options] of Object.entries(dropdowns)) {
+        const select = document.getElementById(id);
+        if (!select) continue;
+
+        select.innerHTML = '<option value="">-- Select --</option>';
+        for (const option of options) {
+            const opt = document.createElement('option');
+            opt.value = option;
+            opt.textContent = option.length > 50 ? option.substring(0, 50) + '...' : option;
+            select.appendChild(opt);
+        }
+    }
+}
+
+// Build prompt from dropdown selections
+function buildImagePrompt() {
+    const character = document.getElementById('prompt-character')?.value || '';
+    const pose = document.getElementById('prompt-pose')?.value || '';
+    const setting = document.getElementById('prompt-setting')?.value || '';
+    const style = document.getElementById('prompt-style')?.value || '';
+
+    const parts = [character, pose].filter(Boolean).join(', ');
+    const withSetting = setting ? `${parts}, in ${setting}` : parts;
+    const withStyle = style ? `${withSetting}, ${style}` : withSetting;
+
+    return withStyle;
+}
+
+// Update prompt textarea when dropdowns change
+function setupPromptBuilderListeners() {
+    const dropdownIds = ['prompt-character', 'prompt-pose', 'prompt-setting', 'prompt-style'];
+    const promptTextarea = document.getElementById('debug-image-prompt');
+
+    for (const id of dropdownIds) {
+        const select = document.getElementById(id);
+        if (select) {
+            select.addEventListener('change', () => {
+                if (promptTextarea) {
+                    promptTextarea.value = buildImagePrompt();
+                }
+            });
+        }
+    }
+}
+
+// Extract |...| from last assistant message
+function extractPromptFromChat() {
+    const messages = document.querySelectorAll('.message.assistant');
+    if (messages.length === 0) return '';
+
+    const lastMessage = messages[messages.length - 1];
+    const text = lastMessage.textContent || '';
+
+    // Find text between | delimiters
+    const match = text.match(/\|([^|]+)\|/);
+    return match ? match[1].trim() : '';
+}
+
+// Debug mode toggle
+const debugModeToggle = document.getElementById('debug-mode-toggle');
+const debugModeSection = document.getElementById('debug-mode-section');
+
+if (debugModeToggle) {
+    debugModeToggle.addEventListener('change', () => {
+        if (debugModeSection) {
+            debugModeSection.style.display = debugModeToggle.checked ? 'block' : 'none';
+        }
+        if (debugModeToggle.checked) {
+            loadImagePromptComponents();
+        }
+    });
+}
+
+// "From Chat" button - extract prompt from last assistant message
+const useChatPromptBtn = document.getElementById('use-chat-prompt-btn');
+if (useChatPromptBtn) {
+    useChatPromptBtn.addEventListener('click', () => {
+        const extracted = extractPromptFromChat();
+        const promptTextarea = document.getElementById('debug-image-prompt');
+        if (promptTextarea && extracted) {
+            promptTextarea.value = extracted;
+        } else if (!extracted) {
+            alert('No |...| prompt found in chat messages');
+        }
+    });
+}
+
+// Generate Preview button
+const generatePreviewBtn = document.getElementById('generate-preview-btn');
+if (generatePreviewBtn) {
+    generatePreviewBtn.addEventListener('click', async () => {
+        const promptTextarea = document.getElementById('debug-image-prompt');
+        const prompt = promptTextarea?.value.trim();
+
+        if (!prompt) {
+            alert('Please enter or build an image prompt');
+            return;
+        }
+
+        generatePreviewBtn.disabled = true;
+        generatePreviewBtn.textContent = '⏳ Generating...';
+
+        try {
+            const response = await fetch(`${API_BASE}/generate/image`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ custom_prompt: prompt })
+            });
+
+            if (!response.ok) {
+                throw new Error('Image generation failed');
+            }
+
+            const data = await response.json();
+            debugPreviewImagePath = data.image_path;
+
+            // Show preview
+            const previewContainer = document.getElementById('debug-preview-container');
+            const previewImage = document.getElementById('debug-preview-image');
+            if (previewContainer && previewImage) {
+                previewImage.src = debugPreviewImagePath + '?t=' + Date.now();
+                previewContainer.style.display = 'block';
+            }
+        } catch (error) {
+            console.error('Preview generation failed:', error);
+            alert('Failed to generate preview: ' + error.message);
+        } finally {
+            generatePreviewBtn.disabled = false;
+            generatePreviewBtn.textContent = '📷 Generate Preview';
+        }
+    });
+}
+
+setupPromptBuilderListeners();
+// ============ END DEBUG MODE ============
+
 // Handle preset selection - show/hide custom URL field and pre-fill prompt/scale
 if (loraPresetSelect) {
     loraPresetSelect.addEventListener('change', () => {
@@ -672,11 +834,16 @@ async function generateLoraVideo() {
         return;
     }
 
+    // Check if debug mode has a preview image to use
+    const debugMode = document.getElementById('debug-mode-toggle')?.checked;
+    const usePreviewImage = debugMode && debugPreviewImagePath;
+
     loraModal.classList.add('hidden');
     const modelName = wanModel === 'wan-2.2-fast' ? 'WAN 2.2 Fast' : 'WAN 2.1';
     const presetName = presetValue === 'custom' ? 'Custom' : presetValue;
     const lora2Info = loraUrl2 ? ` + ${preset2Value}` : '';
-    addSystemMessage(`Generating LoRA video with ${modelName} + ${presetName}${lora2Info} (${numFrames} frames @ ${fps}fps)...`);
+    const debugInfo = usePreviewImage ? ' [using preview image]' : '';
+    addSystemMessage(`Generating LoRA video with ${modelName} + ${presetName}${lora2Info} (${numFrames} frames @ ${fps}fps)${debugInfo}...`);
 
     try {
         const response = await fetch(`${API_BASE}/generate/video/lora`, {
@@ -690,7 +857,8 @@ async function generateLoraVideo() {
                 lora_scale_2: loraScale2,
                 wan_model: wanModel,
                 num_frames: numFrames,
-                fps: fps
+                fps: fps,
+                use_preview_image: usePreviewImage
             })
         });
 

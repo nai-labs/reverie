@@ -17,6 +17,7 @@ from characters import characters
 from config import CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_STEPS, IMAGE_GUIDANCE_SCALE, IMAGE_SAMPLER, DEFAULT_SD_MODEL
 from database_manager import DatabaseManager
 from chub_importer import ChubImporter
+from character_creator import CharacterCreator
 
 # Set theme to match web UI (Glassmorphism Premium)
 ctk.set_appearance_mode("Dark")
@@ -427,6 +428,18 @@ class BotLauncher:
             font=("Segoe UI", 11)
         )
         self.import_btn.pack(side="left", padx=5)
+        
+        # Create Character Button
+        self.create_char_btn = ctk.CTkButton(
+            deploy_frame,
+            text="Create Character",
+            command=self.open_create_character_dialog,
+            fg_color=COLORS["accent_purple"],
+            hover_color=COLORS["accent_cyan"],
+            text_color="white",
+            font=("Segoe UI", 11)
+        )
+        self.create_char_btn.pack(side="left", padx=5)
         
         # Delete Imported Character Button
         self.delete_char_btn = ctk.CTkButton(
@@ -1543,6 +1556,253 @@ Generate ONLY the 3 scenarios separated by |||"""
         # Update the global characters dict for other parts of the app
         global characters
         characters.update(imported)
+
+    def open_create_character_dialog(self):
+        """Open dialog to create a new character with LLM-generated prompts."""
+        import asyncio
+        
+        # Get OpenRouter key for LLM calls
+        openrouter_key = os.getenv("OPENROUTER_KEY")
+        if not openrouter_key:
+            messagebox.showerror("Error", "OpenRouter API key required for prompt generation.\nSet OPENROUTER_KEY environment variable.")
+            return
+        
+        creator = CharacterCreator(openrouter_key)
+        
+        # Create dialog window
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Create New Character")
+        dialog.geometry("800x900")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.configure(fg_color=COLORS["bg_primary"])
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - (800 // 2)
+        y = (dialog.winfo_screenheight() // 2) - (900 // 2)
+        dialog.geometry(f"800x900+{x}+{y}")
+        
+        # Main scrollable frame
+        main_frame = ctk.CTkScrollableFrame(dialog, fg_color=COLORS["bg_secondary"])
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        ctk.CTkLabel(main_frame, text="Create New Character", font=("Segoe UI", 20, "bold"), text_color=COLORS["text_primary"]).pack(pady=10)
+        
+        # Character Name
+        ctk.CTkLabel(main_frame, text="Character Name:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(10, 2))
+        name_entry = ctk.CTkEntry(main_frame, width=400, fg_color=COLORS["input_bg"], border_color=COLORS["border"], text_color=COLORS["text_primary"])
+        name_entry.pack(anchor="w")
+        
+        # Description
+        ctk.CTkLabel(main_frame, text="Character Description (short):", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(10, 2))
+        desc_text = ctk.CTkTextbox(main_frame, height=80, fg_color=COLORS["input_bg"], border_color=COLORS["border"], text_color=COLORS["text_primary"])
+        desc_text.pack(fill="x")
+        
+        # LLM Model Selection
+        ctk.CTkLabel(main_frame, text="LLM Model for Generation:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(10, 2))
+        llm_model_var = ctk.StringVar(value="deepseek/deepseek-v3.2")
+        llm_model_combo = ctk.CTkComboBox(main_frame, variable=llm_model_var, values=list(OPENROUTER_MODELS.keys()), width=400, fg_color=COLORS["input_bg"], button_color=COLORS["accent_cyan"])
+        llm_model_combo.pack(anchor="w")
+        
+        # Generate Prompts Button
+        generate_prompts_btn = ctk.CTkButton(main_frame, text="Generate Prompts", fg_color=COLORS["accent_cyan"], hover_color=COLORS["accent_purple"])
+        generate_prompts_btn.pack(pady=15)
+        
+        # System Prompt
+        ctk.CTkLabel(main_frame, text="System Prompt (editable):", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(10, 2))
+        system_text = ctk.CTkTextbox(main_frame, height=200, fg_color=COLORS["input_bg"], border_color=COLORS["border"], text_color=COLORS["text_primary"])
+        system_text.pack(fill="x")
+        
+        # Image Prompt
+        ctk.CTkLabel(main_frame, text="Image Prompt (editable):", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(10, 2))
+        image_prompt_text = ctk.CTkTextbox(main_frame, height=60, fg_color=COLORS["input_bg"], border_color=COLORS["border"], text_color=COLORS["text_primary"])
+        image_prompt_text.pack(fill="x")
+        
+        # Voice ID
+        ctk.CTkLabel(main_frame, text="ElevenLabs Voice ID (optional):", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(10, 2))
+        voice_entry = ctk.CTkEntry(main_frame, width=400, fg_color=COLORS["input_bg"], border_color=COLORS["border"], text_color=COLORS["text_primary"], placeholder_text="e.g., CzTZ4lZiNBohY9dgHW4V")
+        voice_entry.pack(anchor="w")
+        
+        # Image Preview Section
+        ctk.CTkLabel(main_frame, text="Reference Image:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(15, 2))
+        
+        preview_frame = ctk.CTkFrame(main_frame, fg_color=COLORS["input_bg"], height=250, width=300)
+        preview_frame.pack(pady=5)
+        preview_frame.pack_propagate(False)
+        
+        preview_label = ctk.CTkLabel(preview_frame, text="No image generated yet", text_color=COLORS["text_secondary"])
+        preview_label.pack(expand=True)
+        
+        # Store the generated image path
+        generated_image_path = [None]
+        photo_ref = [None]  # Keep reference to prevent garbage collection
+        
+        # Image generation buttons
+        img_btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        img_btn_frame.pack(pady=5)
+        
+        generate_img_btn = ctk.CTkButton(img_btn_frame, text="Generate Image", fg_color=COLORS["accent_purple"], hover_color=COLORS["accent_cyan"])
+        generate_img_btn.pack(side="left", padx=5)
+        
+        reroll_btn = ctk.CTkButton(img_btn_frame, text="Reroll", fg_color=COLORS["input_bg"], hover_color=COLORS["hover"], state="disabled")
+        reroll_btn.pack(side="left", padx=5)
+        
+        # Action buttons
+        action_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        action_frame.pack(pady=20)
+        
+        save_btn = ctk.CTkButton(action_frame, text="Save Character", fg_color=COLORS["success"], hover_color="#16a34a", state="disabled")
+        save_btn.pack(side="left", padx=10)
+        
+        cancel_btn = ctk.CTkButton(action_frame, text="Cancel", fg_color=COLORS["error"], hover_color="#dc2626", command=dialog.destroy)
+        cancel_btn.pack(side="left", padx=10)
+        
+        # Status label
+        status_label = ctk.CTkLabel(main_frame, text="", text_color=COLORS["text_secondary"])
+        status_label.pack(pady=5)
+        
+        # --- Event Handlers ---
+        
+        def generate_prompts():
+            """Generate system and image prompts using LLM."""
+            name = name_entry.get().strip()
+            desc = desc_text.get("1.0", "end-1c").strip()
+            model = llm_model_var.get()
+            
+            if not name or not desc:
+                messagebox.showwarning("Missing Info", "Please enter a name and description.")
+                return
+            
+            status_label.configure(text="Generating prompts...")
+            generate_prompts_btn.configure(state="disabled")
+            
+            def async_generate():
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    system_prompt, image_prompt = loop.run_until_complete(
+                        creator.generate_prompts(name, desc, model)
+                    )
+                    loop.close()
+                    
+                    # Update UI in main thread
+                    dialog.after(0, lambda: update_prompts(system_prompt, image_prompt))
+                except Exception as e:
+                    dialog.after(0, lambda: show_error(str(e)))
+            
+            def update_prompts(system_prompt, image_prompt):
+                system_text.delete("1.0", "end")
+                system_text.insert("1.0", system_prompt)
+                image_prompt_text.delete("1.0", "end")
+                image_prompt_text.insert("1.0", image_prompt)
+                status_label.configure(text="Prompts generated! Review and edit if needed.")
+                generate_prompts_btn.configure(state="normal")
+                save_btn.configure(state="normal")
+            
+            def show_error(msg):
+                status_label.configure(text=f"Error: {msg}")
+                generate_prompts_btn.configure(state="normal")
+            
+            threading.Thread(target=async_generate, daemon=True).start()
+        
+        def generate_image():
+            """Generate reference image using Stable Diffusion."""
+            img_prompt = image_prompt_text.get("1.0", "end-1c").strip()
+            if not img_prompt:
+                messagebox.showwarning("No Prompt", "Please generate or enter an image prompt first.")
+                return
+            
+            status_label.configure(text="Generating image...")
+            generate_img_btn.configure(state="disabled")
+            
+            def do_generate():
+                try:
+                    import requests
+                    sd_url = os.getenv("SD_URL", "http://127.0.0.1:7860")
+                    
+                    payload = {
+                        "prompt": img_prompt,
+                        "steps": 8,
+                        "sampler_name": "Euler",
+                        "scheduler": "beta",
+                        "width": 512,
+                        "height": 768,
+                        "seed": -1,
+                        "cfg_scale": 1
+                    }
+                    
+                    response = requests.post(f"{sd_url}/sdapi/v1/txt2img", json=payload, timeout=120)
+                    response.raise_for_status()
+                    data = response.json()
+                    
+                    # Save the image
+                    import base64
+                    from datetime import datetime
+                    os.makedirs("temp_images", exist_ok=True)
+                    img_path = os.path.join("temp_images", f"char_preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
+                    
+                    img_data = base64.b64decode(data["images"][0])
+                    with open(img_path, "wb") as f:
+                        f.write(img_data)
+                    
+                    generated_image_path[0] = img_path
+                    dialog.after(0, lambda: show_preview(img_path))
+                    
+                except Exception as e:
+                    dialog.after(0, lambda: show_img_error(str(e)))
+            
+            def show_preview(path):
+                try:
+                    img = Image.open(path)
+                    img.thumbnail((280, 230))
+                    photo = ImageTk.PhotoImage(img)
+                    photo_ref[0] = photo
+                    preview_label.configure(image=photo, text="")
+                    status_label.configure(text="Image generated!")
+                    reroll_btn.configure(state="normal")
+                except Exception as e:
+                    status_label.configure(text=f"Preview error: {e}")
+                finally:
+                    generate_img_btn.configure(state="normal")
+            
+            def show_img_error(msg):
+                status_label.configure(text=f"Image error: {msg}")
+                generate_img_btn.configure(state="normal")
+            
+            threading.Thread(target=do_generate, daemon=True).start()
+        
+        def save_character():
+            """Save the character."""
+            name = name_entry.get().strip()
+            system_prompt = system_text.get("1.0", "end-1c").strip()
+            image_prompt = image_prompt_text.get("1.0", "end-1c").strip()
+            voice_id = voice_entry.get().strip() or None
+            
+            if not name or not system_prompt:
+                messagebox.showwarning("Missing Info", "Name and system prompt are required.")
+                return
+            
+            try:
+                result = creator.save_character(
+                    name=name,
+                    system_prompt=system_prompt,
+                    image_prompt=image_prompt,
+                    voice_id=voice_id,
+                    image_path=generated_image_path[0]
+                )
+                messagebox.showinfo("Success", result)
+                self.refresh_character_list()
+                dialog.destroy()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save: {e}")
+        
+        # Bind handlers
+        generate_prompts_btn.configure(command=generate_prompts)
+        generate_img_btn.configure(command=generate_image)
+        reroll_btn.configure(command=generate_image)
+        save_btn.configure(command=save_character)
 
     def delete_imported_character(self):
         """Delete an imported character from the launcher."""

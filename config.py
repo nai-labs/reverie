@@ -35,16 +35,16 @@ CLAUDE_MODELS = {
 }
 
 OPENROUTER_MODELS = {
+    "xiaomi/mimo-v2-flash:free": "mimo",
+    "deepseek/deepseek-v3.2": "deep",
     "x-ai/grok-4.1-fast": "grok4.1",
-    "deepseek/deepseek-chat-v3-0324": "deep",
-    "deepseek/deepseek-r1-0528-qwen3-8b": "R1qwen3",
-    "deepseek/deepseek-r1-0528": "R1deep",
-    "deepseek/deepseek-v3.2": "deep.2",
-    "x-ai/grok-4.1-fast:free": "grok4free",
-    "mistralai/mistral-large-2512": "mistral",
-    "anthropic/claude-sonnet-4.5": "sonnet4.5",
+    "moonshotai/kimi-k2-0905": "kimi",
     "z-ai/glm-4.7": "glm4.7",
-    "google/gemini-3-flash-preview": "gemini3"
+    "deepseek/deepseek-r1-0528": "R1deep",
+    "mistralai/mistral-large-2512": "mistral",
+    "google/gemini-3-flash-preview": "gemini3",
+    "deepseek/deepseek-r1-0528-qwen3-8b": "R1qwen3",
+    "anthropic/claude-sonnet-4.5": "sonnet4.5",
    
    
    
