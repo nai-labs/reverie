@@ -7,6 +7,9 @@ let character = urlParams.get('character') || "Anika";
 let resumeSessionParam = urlParams.get('resume') || null;  // Optional session to resume
 let sessionPassword = null;
 
+// Scene Queue State
+let sceneQueue = [];  // Array of {url, type, timestamp}
+
 // Elements
 const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
@@ -21,6 +24,13 @@ const closeSettingsBtn = document.getElementById('close-settings-btn');
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 const backgroundLayer = document.getElementById('background-layer');
 const exportBtn = document.getElementById('export-btn');
+
+// Scene Queue Elements
+const sceneQueuePanel = document.getElementById('scene-queue-panel');
+const sceneQueueContainer = document.getElementById('scene-queue-container');
+const sceneCountBadge = document.getElementById('scene-count-badge');
+const compileStoryBtn = document.getElementById('compile-story-btn');
+const clearQueueBtn = document.getElementById('clear-queue-btn');
 
 // Password Elements
 const passwordModal = document.getElementById('password-modal');
@@ -286,9 +296,13 @@ function addSystemMessage(text) {
 function addImage(url, prompt) {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot';
+    const imageId = `image-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     msgDiv.innerHTML = `
         <div class="content">
-            <img src="${url}" alt="${prompt}" onclick="window.open('${url}', '_blank')">
+            <img id="${imageId}" src="${url}" alt="${prompt}" onclick="window.open('${url}', '_blank')">
+            <button class="add-to-story-btn" onclick="addToSceneQueue('${url}', 'image', '${imageId}', this, 'image')">
+                ➕ Add to Story
+            </button>
         </div>
     `;
     messagesDiv.appendChild(msgDiv);
@@ -298,15 +312,24 @@ function addImage(url, prompt) {
     backgroundLayer.style.backgroundImage = `url('${url}')`;
 }
 
-function addVideo(url, prompt) {
+function addVideo(url, prompt, type = 'video') {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot';
+    const videoId = `video-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     msgDiv.innerHTML = `
         <div class="content">
-            <video controls autoplay loop>
+            <video id="${videoId}" controls autoplay loop>
                 <source src="${url}" type="video/mp4">
                 Your browser does not support the video tag.
             </video>
+            <div class="video-actions">
+                <button class="add-to-story-btn" onclick="addToSceneQueue('${url}', '${type}', '${videoId}', this, 'video')">
+                    ➕ Add to Story
+                </button>
+                <button class="add-to-story-btn" onclick="extractLastFrame('${url}')">
+                    📷 Use Last Frame
+                </button>
+            </div>
         </div>
     `;
     messagesDiv.appendChild(msgDiv);
@@ -331,6 +354,287 @@ function addAudio(url) {
 function scrollToBottom() {
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
+
+// ============ SCENE QUEUE ============
+function addToSceneQueue(url, type, elementId, btn, mediaType = 'video') {
+    // Add to queue with mediaType for proper handling during compilation
+    sceneQueue.push({
+        url: url,
+        type: type,
+        mediaType: mediaType,  // 'image' or 'video'
+        timestamp: Date.now()
+    });
+
+    // Update button state
+    if (btn) {
+        btn.textContent = '✓ Added';
+        btn.classList.add('added');
+    }
+
+    // Show panel and update UI
+    showSceneQueuePanel();
+    renderSceneQueue();
+}
+
+function removeFromSceneQueue(index) {
+    sceneQueue.splice(index, 1);
+    renderSceneQueue();
+
+    // Hide panel if empty
+    if (sceneQueue.length === 0) {
+        hideSceneQueuePanel();
+    }
+}
+
+function renderSceneQueue() {
+    if (!sceneQueueContainer) return;
+
+    // Update count badge
+    if (sceneCountBadge) {
+        sceneCountBadge.textContent = sceneQueue.length;
+    }
+
+    // Update compile button state
+    if (compileStoryBtn) {
+        compileStoryBtn.disabled = sceneQueue.length < 2;
+    }
+
+    // Render cards
+    if (sceneQueue.length === 0) {
+        sceneQueueContainer.innerHTML = '<div class="scene-queue-empty">Add images/videos to build your story</div>';
+        return;
+    }
+
+    sceneQueueContainer.innerHTML = '';
+    sceneQueue.forEach((scene, index) => {
+        const card = document.createElement('div');
+        card.className = 'scene-card';
+
+        // Get type label
+        let typeLabel = scene.type;
+        if (scene.mediaType === 'image') typeLabel = '🖼️ Image';
+        else if (scene.type === 'wan') typeLabel = 'WAN';
+        else if (scene.type === 's2v') typeLabel = 'S2V';
+        else if (scene.type === 'infinitetalk') typeLabel = 'Talk';
+
+        // Use img or video based on mediaType
+        const thumbnail = scene.mediaType === 'image'
+            ? `<img class="scene-thumbnail" src="${scene.url}">`
+            : `<video class="scene-thumbnail" src="${scene.url}" muted></video>`;
+
+        card.innerHTML = `
+            <span class="scene-number">${index + 1}</span>
+            ${thumbnail}
+            <button class="scene-remove" onclick="removeFromSceneQueue(${index})">✕</button>
+            <div class="scene-type">${typeLabel}</div>
+        `;
+
+        sceneQueueContainer.appendChild(card);
+    });
+}
+
+function clearSceneQueue() {
+    sceneQueue = [];
+    renderSceneQueue();
+    hideSceneQueuePanel();
+
+    // Reset all "Add to Story" buttons in chat
+    document.querySelectorAll('.add-to-story-btn.added').forEach(btn => {
+        btn.textContent = '➕ Add to Story';
+        btn.classList.remove('added');
+    });
+}
+
+function showSceneQueuePanel() {
+    if (sceneQueuePanel) {
+        sceneQueuePanel.classList.remove('hidden');
+    }
+}
+
+function hideSceneQueuePanel() {
+    if (sceneQueuePanel) {
+        sceneQueuePanel.classList.add('hidden');
+    }
+}
+
+function toggleSceneQueuePanel() {
+    if (sceneQueuePanel) {
+        sceneQueuePanel.classList.toggle('collapsed');
+    }
+}
+
+async function compileStory() {
+    if (sceneQueue.length < 2) {
+        addSystemMessage('Need at least 2 clips to compile a story.');
+        return;
+    }
+
+    addSystemMessage(`Compiling ${sceneQueue.length} clips into story video...`);
+
+    // Disable button during compilation
+    if (compileStoryBtn) {
+        compileStoryBtn.disabled = true;
+        compileStoryBtn.textContent = '⏳ Compiling...';
+    }
+
+    try {
+        // Send full scene data with mediaType for proper handling
+        const scenes = sceneQueue.map(scene => ({
+            url: scene.url,
+            mediaType: scene.mediaType || 'video'
+        }));
+
+        const response = await fetch(`${API_BASE}/compile-story`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scenes: scenes })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Compilation failed');
+        }
+
+        const data = await response.json();
+        addSystemMessage('Story compiled successfully!');
+        addVideo(data.video_url, 'Compiled Story', 'story');
+
+        // Clear queue after successful compilation
+        clearSceneQueue();
+
+    } catch (error) {
+        console.error('Story compilation failed:', error);
+        addSystemMessage(`Failed to compile story: ${error.message}`);
+    } finally {
+        // Re-enable button
+        if (compileStoryBtn) {
+            compileStoryBtn.disabled = sceneQueue.length < 2;
+            compileStoryBtn.textContent = '🎥 Compile Story';
+        }
+    }
+}
+
+// Extract last frame from video and set as current image
+async function extractLastFrame(videoUrl) {
+    addSystemMessage('Extracting last frame from video...');
+
+    try {
+        const response = await fetch(`${API_BASE}/extract-frame`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ video_url: videoUrl })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Frame extraction failed');
+        }
+
+        const data = await response.json();
+        addSystemMessage('Last frame extracted and set as current image!');
+        addImage(data.image_url, 'Last frame from video');
+
+    } catch (error) {
+        console.error('Frame extraction failed:', error);
+        addSystemMessage(`Failed to extract frame: ${error.message}`);
+    }
+}
+
+// Scene queue event listeners
+if (compileStoryBtn) compileStoryBtn.addEventListener('click', compileStory);
+if (clearQueueBtn) clearQueueBtn.addEventListener('click', clearSceneQueue);
+// ============ END SCENE QUEUE ============
+
+// ============ SCRIPT TTS ============
+const scriptTTSModal = document.getElementById('script-tts-modal');
+const scriptTTSInput = document.getElementById('tts-script-input');
+const generateScriptTTSBtn = document.getElementById('generate-script-tts-btn');
+const closeScriptTTSBtn = document.getElementById('close-script-tts-btn');
+const scriptTTSBtn = document.getElementById('script-tts-btn');
+
+function openScriptTTSModal() {
+    if (scriptTTSModal) {
+        scriptTTSModal.classList.remove('hidden');
+        if (scriptTTSInput) scriptTTSInput.focus();
+    }
+}
+
+function closeScriptTTSModal() {
+    if (scriptTTSModal) {
+        scriptTTSModal.classList.add('hidden');
+        if (scriptTTSInput) scriptTTSInput.value = '';
+    }
+}
+
+async function generateScriptTTS() {
+    const text = scriptTTSInput?.value.trim();
+    if (!text) {
+        alert('Please enter a script.');
+        return;
+    }
+
+    closeScriptTTSModal();
+    addSystemMessage('Generating script audio...');
+
+    try {
+        const response = await fetch(`${API_BASE}/generate/script-tts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'TTS generation failed');
+        }
+
+        const data = await response.json();
+        addSystemMessage('Script audio generated!');
+        addAudio(data.tts_url);
+
+    } catch (error) {
+        console.error('Script TTS failed:', error);
+        addSystemMessage(`Failed to generate script audio: ${error.message}`);
+    }
+}
+
+// Script TTS event listeners
+if (scriptTTSBtn) scriptTTSBtn.addEventListener('click', openScriptTTSModal);
+if (closeScriptTTSBtn) closeScriptTTSBtn.addEventListener('click', closeScriptTTSModal);
+if (generateScriptTTSBtn) generateScriptTTSBtn.addEventListener('click', generateScriptTTS);
+// ============ END SCRIPT TTS ============
+
+// ============ LIPSYNC ============
+const lipsyncBtn = document.getElementById('lipsync-btn');
+const lipsyncModelSelect = document.getElementById('lipsync-model-select');
+
+async function generateLipsync() {
+    const model = lipsyncModelSelect?.value || 'veed';
+    const modelName = lipsyncModelSelect?.options[lipsyncModelSelect.selectedIndex]?.text || 'Veed';
+
+    addSystemMessage(`Generating lipsync with ${modelName}...`);
+
+    try {
+        const response = await fetch(`${API_BASE}/generate/lipsync?model=${model}`, { method: 'POST' });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Lipsync failed');
+        }
+
+        const data = await response.json();
+        addSystemMessage(`Lipsync complete with ${modelName}!`);
+        addVideo(data.video_url, `Lipsynced video (${modelName})`, 'lipsync');
+
+    } catch (error) {
+        console.error('Lipsync failed:', error);
+        addSystemMessage(`Lipsync failed: ${error.message}`);
+    }
+}
+
+// Lipsync event listener
+if (lipsyncBtn) lipsyncBtn.addEventListener('click', generateLipsync);
+// ============ END LIPSYNC ============
 
 // Media Generation
 async function generateImage() {
@@ -373,7 +677,8 @@ async function generateVideo() {
         const response = await fetch(`${API_BASE}/generate/video/wavespeed?model=${model}`, { method: 'POST' });
         if (!response.ok) throw new Error('Generation failed');
         const data = await response.json();
-        addVideo(data.video_url, data.prompt);
+        // Pass the model type for scene queue classification
+        addVideo(data.video_url, data.prompt, model);
     } catch (error) {
         console.error('Video gen failed:', error);
         addSystemMessage('Failed to generate video. Ensure you have a recent image and audio.');
@@ -1085,12 +1390,13 @@ async function generateLoraVideo() {
     const numFrames = parseInt(document.getElementById('lora-frames').value) || 81;
     const fps = parseInt(document.getElementById('lora-fps').value) || 16;
 
-    // Get LoRA 1 URL from preset or custom input
-    let loraUrl;
+    // Get LoRA 1 URL from preset or custom input (null if not selected)
+    let loraUrl = null;
     if (presetValue === 'custom') {
-        loraUrl = document.getElementById('lora-url').value.trim();
-    } else {
-        loraUrl = LORA_PRESETS[presetValue]?.url || '';
+        const customUrl = document.getElementById('lora-url').value.trim();
+        loraUrl = customUrl || null;
+    } else if (presetValue && LORA_PRESETS[presetValue]?.url) {
+        loraUrl = LORA_PRESETS[presetValue].url;
     }
 
     // Get LoRA 2 URL and scale (optional)
@@ -1112,10 +1418,6 @@ async function generateLoraVideo() {
         alert('Please enter a prompt.');
         return;
     }
-    if (!loraUrl) {
-        alert('Please enter or select a LoRA URL.');
-        return;
-    }
 
     // Check if debug mode has a preview image to use
     const debugMode = document.getElementById('debug-mode-toggle')?.checked;
@@ -1123,10 +1425,10 @@ async function generateLoraVideo() {
 
     loraModal.classList.add('hidden');
     const modelName = wanModel === 'wan-2.2-fast' ? 'WAN 2.2 Fast' : 'WAN 2.1';
-    const presetName = presetValue === 'custom' ? 'Custom' : presetValue;
+    const loraInfo = loraUrl ? ` + ${presetValue === 'custom' ? 'Custom LoRA' : presetValue}` : '';
     const lora2Info = loraUrl2 ? ` + ${preset2Value}` : '';
     const debugInfo = usePreviewImage ? ' [using preview image]' : '';
-    addSystemMessage(`Generating LoRA video with ${modelName} + ${presetName}${lora2Info} (${numFrames} frames @ ${fps}fps)${debugInfo}...`);
+    addSystemMessage(`Generating WAN video with ${modelName}${loraInfo}${lora2Info} (${numFrames} frames @ ${fps}fps)${debugInfo}...`);
 
     try {
         const response = await fetch(`${API_BASE}/generate/video/lora`, {
@@ -1151,7 +1453,7 @@ async function generateLoraVideo() {
         }
 
         const data = await response.json();
-        addVideo(data.video_url, data.prompt);
+        addVideo(data.video_url, data.prompt, 'wan');
         addSystemMessage('LoRA video generated successfully!');
     } catch (error) {
         console.error('LoRA video gen failed:', error);

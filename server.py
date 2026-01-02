@@ -347,6 +347,35 @@ async def generate_tts(request: TTSRequest):
          
     return {"tts_url": tts_file}
 
+class ScriptTTSRequest(BaseModel):
+    text: str
+
+@app.post("/api/generate/script-tts")
+async def generate_script_tts(request: ScriptTTSRequest):
+    """Generate TTS from raw script text, bypassing voice direction."""
+    if not state.tts_manager:
+        raise HTTPException(status_code=400, detail="TTS not initialized")
+    
+    if not request.text or not request.text.strip():
+        raise HTTPException(status_code=400, detail="Script text is required")
+    
+    try:
+        # Send raw text directly to ElevenLabs (no voice direction processing)
+        tts_path = await state.tts_manager.generate_v3_tts(request.text.strip())
+        
+        if tts_path:
+            # Set as last audio for S2V use
+            state.conversation_manager.set_last_audio_path(tts_path)
+            relative_path = os.path.relpath(tts_path, start=os.getcwd())
+            tts_file = "/" + relative_path.replace("\\", "/")
+            return {"tts_url": tts_file}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to generate TTS audio")
+            
+    except Exception as e:
+        logger.error(f"Script TTS generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Script TTS failed: {e}")
+
 @app.post("/api/generate/image")
 async def generate_image(model: str = "z-image-turbo"):
     """Generate image with specified model. Options: z-image-turbo, xl-lustify, xl-epicrealism"""
@@ -556,11 +585,16 @@ async def generate_video_wavespeed(model: str = "infinitetalk"):
     video_url = None
     
     if model == "wan":
-        # Use Replicate WAN S2V
-        if not state.replicate_manager:
-            raise HTTPException(status_code=400, detail="Replicate manager not initialized")
-        output = await state.replicate_manager.generate_wan_s2v_video(image_path, audio_path, prompt)
-        video_url = output[0] if isinstance(output, list) else output
+        # Use Wavespeed WAN S2V (switched from Replicate)
+        if not state.wavespeed_manager:
+            raise HTTPException(status_code=400, detail="Wavespeed manager not initialized")
+        video_url = await state.wavespeed_manager.generate_video(
+            image_path, 
+            audio_path,
+            model="wan-s2v",
+            prompt=prompt,
+            resolution="480p"
+        )
     else:
         # Use Wavespeed models
         if not state.wavespeed_manager:
@@ -603,7 +637,7 @@ async def generate_video_wavespeed(model: str = "infinitetalk"):
 
 class LoraVideoRequest(BaseModel):
     prompt: str
-    lora_url: str
+    lora_url: Optional[str] = None  # Now optional - can generate without LoRA
     lora_scale: float = 1.0
     lora_url_2: Optional[str] = None  # Optional second LoRA
     lora_scale_2: Optional[float] = None
@@ -628,14 +662,17 @@ async def generate_video_lora(request: LoraVideoRequest):
         raise HTTPException(status_code=400, detail="No recent image found. Please generate an image first.")
     
     if request.use_preview_image:
-        logger.info(f"[LoRA Video] Using preview image: {image_path}")
+        logger.info(f"[WAN Video] Using preview image: {image_path}")
     
-    logger.info(f"[LoRA Video] Model: {request.wan_model}")
-    logger.info(f"[LoRA Video] Prompt: {request.prompt[:50]}...")
-    logger.info(f"[LoRA Video] LoRA 1: {request.lora_url[:50]}... (scale: {request.lora_scale})")
+    logger.info(f"[WAN Video] Model: {request.wan_model}")
+    logger.info(f"[WAN Video] Prompt: {request.prompt[:50]}...")
+    if request.lora_url:
+        logger.info(f"[WAN Video] LoRA 1: {request.lora_url[:50]}... (scale: {request.lora_scale})")
+    else:
+        logger.info(f"[WAN Video] No LoRA - plain image-to-video")
     if request.lora_url_2:
-        logger.info(f"[LoRA Video] LoRA 2: {request.lora_url_2[:50]}... (scale: {request.lora_scale_2})")
-    logger.info(f"[LoRA Video] Frames: {request.num_frames}, FPS: {request.fps}")
+        logger.info(f"[WAN Video] LoRA 2: {request.lora_url_2[:50]}... (scale: {request.lora_scale_2})")
+    logger.info(f"[WAN Video] Frames: {request.num_frames}, FPS: {request.fps}")
     
     # 2. Generate Video
     output = await state.replicate_manager.generate_wan_lora_video(
@@ -677,6 +714,72 @@ async def generate_video_lora(request: LoraVideoRequest):
     return {
         "video_url": f"/{relative_path}",
         "prompt": request.prompt
+    }
+
+@app.post("/api/generate/lipsync")
+async def generate_lipsync(model: str = "veed"):
+    """Lipsync last video with last audio. Models: veed (default), kling (relaxed), pixverse (express)."""
+    
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    # Get last video path
+    video_path = state.conversation_manager.get_last_video_path()
+    if not video_path or not os.path.exists(video_path):
+        raise HTTPException(status_code=400, detail="No video available for lipsync")
+    
+    # Get last audio path
+    audio_path = state.conversation_manager.get_last_audio_path()
+    if not audio_path or not os.path.exists(audio_path):
+        raise HTTPException(status_code=400, detail="No audio available for lipsync")
+    
+    logger.info(f"[Lipsync] Generating with model={model}, video={video_path}, audio={audio_path}")
+    
+    # Generate lipsync based on model selection
+    video_url = None
+    
+    if model == "veed":
+        # Wavespeed Veed Lipsync (default)
+        if not state.wavespeed_manager:
+            raise HTTPException(status_code=400, detail="Wavespeed manager not initialized")
+        video_url = await state.wavespeed_manager.generate_lipsync(video_path, audio_path, model="veed")
+        
+    elif model == "pixverse":
+        # Replicate Pixverse Lipsync (express - fast)
+        if not state.replicate_manager:
+            raise HTTPException(status_code=400, detail="Replicate manager not initialized")
+        video_url = await state.replicate_manager.generate_pixverse_lipsync(video_path, audio_path)
+        
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown lipsync model: {model}. Use: veed, pixverse")
+    
+    if not video_url:
+        raise HTTPException(status_code=500, detail=f"Failed to generate lipsync with {model}")
+    
+    # Download the video
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(video_url) as resp:
+            if resp.status == 200:
+                video_data = await resp.read()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                video_filename = f"lipsync_{model}_{timestamp}.mp4"
+                output_path = os.path.join(state.conversation_manager.subfolder_path, video_filename)
+                
+                with open(output_path, "wb") as f:
+                    f.write(video_data)
+                    
+                # Set as last video for continuity
+                state.conversation_manager.set_last_video_path(output_path)
+            else:
+                raise HTTPException(status_code=500, detail="Failed to download lipsynced video")
+    
+    relative_path = os.path.relpath(output_path, start=os.getcwd())
+    relative_path = relative_path.replace("\\", "/")
+    
+    return {
+        "video_url": f"/{relative_path}",
+        "model": model
     }
 
 class LoraItem(BaseModel):
@@ -736,6 +839,204 @@ async def sync_loras(request: SyncLorasRequest):
         "skipped": skipped,
         "folder": loras_folder
     }
+
+class SceneItem(BaseModel):
+    url: str
+    mediaType: str  # 'image' or 'video'
+
+class CompileStoryRequest(BaseModel):
+    scenes: List[SceneItem]  # List of scenes with url and mediaType
+
+@app.post("/api/compile-story")
+async def compile_story(request: CompileStoryRequest):
+    """Compile multiple images/videos into a single story video using FFmpeg."""
+    import subprocess
+    import tempfile
+    
+    if not request.scenes or len(request.scenes) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 items to compile")
+    
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    logger.info(f"[Compile Story] Compiling {len(request.scenes)} items...")
+    
+    # Convert scenes to absolute paths and track types
+    scenes = []
+    for scene in request.scenes:
+        relative_path = scene.url.lstrip('/')
+        absolute_path = os.path.join(os.getcwd(), relative_path)
+        
+        if not os.path.exists(absolute_path):
+            raise HTTPException(status_code=400, detail=f"File not found: {scene.url}")
+        
+        scenes.append({
+            'path': absolute_path,
+            'mediaType': scene.mediaType
+        })
+        logger.info(f"[Compile Story] Added {scene.mediaType}: {absolute_path}")
+    
+    # Check if we have any images
+    has_images = any(s['mediaType'] == 'image' for s in scenes)
+    
+    # Target resolution for all content
+    TARGET_WIDTH = 1280
+    TARGET_HEIGHT = 720
+    SCALE_FILTER = f"scale={TARGET_WIDTH}:{TARGET_HEIGHT}:force_original_aspect_ratio=decrease,pad={TARGET_WIDTH}:{TARGET_HEIGHT}:(ow-iw)/2:(oh-ih)/2,fps=30"
+    
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"story_{timestamp}.mp4"
+        output_path = os.path.join(state.conversation_manager.subfolder_path, output_filename)
+        
+        # Always pre-process all scenes to normalize resolution
+        temp_videos = []
+        
+        for i, scene in enumerate(scenes):
+            temp_video = os.path.join(tempfile.gettempdir(), f"scene_{timestamp}_{i}.mp4")
+            
+            if scene['mediaType'] == 'image':
+                # Convert image to 2s video at target resolution
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-loop", "1",
+                    "-i", scene['path'],
+                    "-c:v", "libx264",
+                    "-t", "2",  # 2 seconds
+                    "-pix_fmt", "yuv420p",
+                    "-vf", SCALE_FILTER,
+                    temp_video
+                ]
+                subprocess.run(cmd, capture_output=True, timeout=30)
+                temp_videos.append({'path': temp_video, 'temp': True})
+            else:
+                # Normalize video to target resolution
+                cmd = [
+                    "ffmpeg", "-y",
+                    "-i", scene['path'],
+                    "-c:v", "libx264",
+                    "-preset", "fast",
+                    "-crf", "23",
+                    "-pix_fmt", "yuv420p",
+                    "-vf", SCALE_FILTER,
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    temp_video
+                ]
+                result = subprocess.run(cmd, capture_output=True, timeout=120)
+                if result.returncode == 0:
+                    temp_videos.append({'path': temp_video, 'temp': True})
+                else:
+                    # Fallback: use original if scaling fails
+                    logger.warning(f"[Compile Story] Failed to scale video {i}, using original")
+                    temp_videos.append({'path': scene['path'], 'temp': False})
+        
+        # Concatenate all normalized clips
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            concat_file = f.name
+            for tv in temp_videos:
+                escaped_path = tv['path'].replace("\\", "/").replace("'", "'\\''")
+                f.write(f"file '{escaped_path}'\n")
+        
+        cmd = [
+            "ffmpeg", "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", concat_file,
+            "-c", "copy",  # Stream copy since already encoded
+            output_path
+        ]
+        
+        logger.info(f"[Compile Story] Concatenating {len(temp_videos)} normalized clips to {TARGET_WIDTH}x{TARGET_HEIGHT}...")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        
+        # Clean up temp files
+        os.unlink(concat_file)
+        for tv in temp_videos:
+            if tv['temp'] and os.path.exists(tv['path']):
+                os.unlink(tv['path'])
+        
+        if result.returncode != 0:
+            logger.error(f"[Compile Story] FFmpeg error: {result.stderr}")
+            raise HTTPException(status_code=500, detail=f"FFmpeg failed: {result.stderr[:200]}")
+        
+        logger.info(f"[Compile Story] Success! Output: {output_path}")
+        
+        relative_path = os.path.relpath(output_path, start=os.getcwd())
+        relative_path = relative_path.replace("\\", "/")
+        
+        return {
+            "video_url": f"/{relative_path}",
+            "clips_count": len(scenes)
+        }
+        
+    except subprocess.TimeoutExpired:
+        logger.error("[Compile Story] FFmpeg timeout")
+        raise HTTPException(status_code=500, detail="Video compilation timed out")
+    except Exception as e:
+        logger.error(f"[Compile Story] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ExtractFrameRequest(BaseModel):
+    video_url: str
+
+@app.post("/api/extract-frame")
+async def extract_frame(request: ExtractFrameRequest):
+    """Extract the last frame of a video and set it as the current image."""
+    import subprocess
+    
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    # Convert URL to absolute path
+    relative_path = request.video_url.lstrip('/')
+    video_path = os.path.join(os.getcwd(), relative_path)
+    
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=400, detail=f"Video not found: {request.video_url}")
+    
+    logger.info(f"[Extract Frame] Extracting last frame from: {video_path}")
+    
+    try:
+        # Output path
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"frame_{timestamp}.png"
+        output_path = os.path.join(state.conversation_manager.subfolder_path, output_filename)
+        
+        # Use FFmpeg to extract last frame
+        # First get video duration, then seek to near end
+        cmd = [
+            "ffmpeg", "-y",
+            "-sseof", "-0.1",  # Seek to 0.1s before end
+            "-i", video_path,
+            "-vframes", "1",
+            "-q:v", "2",
+            output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0 or not os.path.exists(output_path):
+            logger.error(f"[Extract Frame] FFmpeg error: {result.stderr}")
+            raise HTTPException(status_code=500, detail="Failed to extract frame")
+        
+        logger.info(f"[Extract Frame] Success! Output: {output_path}")
+        
+        # Set as last selfie path for next video generation
+        state.conversation_manager.set_last_selfie_path(output_path)
+        
+        relative_path = os.path.relpath(output_path, start=os.getcwd())
+        relative_path = relative_path.replace("\\", "/")
+        
+        return {
+            "image_url": f"/{relative_path}"
+        }
+        
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Frame extraction timed out")
+    except Exception as e:
+        logger.error(f"[Extract Frame] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/lora-presets")
 async def get_lora_presets():

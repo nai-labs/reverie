@@ -577,30 +577,37 @@ class ReplicateManager:
         logger.info(f"Formatted CivitAI URL: {formatted_url[:80]}...")
         return formatted_url
 
-    async def generate_wan_lora_video(self, image_path: str, prompt: str, lora_url: str, lora_scale: float = 1.0, lora_url_2: str = None, lora_scale_2: float = None, model: str = "wan-2.2-fast", num_frames: int = 81, fps: int = 16):
-        """Generate a video using WAN with a custom LoRA.
+    async def generate_wan_lora_video(self, image_path: str, prompt: str, lora_url: str = None, lora_scale: float = 1.0, lora_url_2: str = None, lora_scale_2: float = None, model: str = "wan-2.2-fast", num_frames: int = 81, fps: int = 16):
+        """Generate a video using WAN with an optional LoRA.
         
         model options:
         - 'wan-2.2-fast': Uses lora_weights_transformer (HuggingFace URLs)
         - 'wan-2.1-lora': Uses hf_lora (CivitAI URLs)
+        
+        If lora_url is None, generates a plain image-to-video without LoRA.
         """
-        logger.info(f"Generating WAN LoRA video with model: {model}, lora_scale: {lora_scale}, frames: {num_frames}, fps: {fps}")
-        if lora_url_2:
-            logger.info(f"Using second LoRA with scale: {lora_scale_2}")
+        if lora_url:
+            logger.info(f"Generating WAN video with LoRA, model: {model}, lora_scale: {lora_scale}, frames: {num_frames}, fps: {fps}")
+            if lora_url_2:
+                logger.info(f"Using second LoRA with scale: {lora_scale_2}")
+        else:
+            logger.info(f"Generating WAN video (no LoRA), model: {model}, frames: {num_frames}, fps: {fps}")
         logger.info(f"Prompt: {prompt[:100]}...")
         
         # Get model identifier
         model_id = self.wan_lora_models.get(model)
         if not model_id:
-            logger.error(f"Unknown WAN LoRA model: {model}")
+            logger.error(f"Unknown WAN model: {model}")
             return None
         
-        # Format CivitAI URL with token (only needed for wan-2.1-lora)
-        if model == "wan-2.1-lora":
-            formatted_lora_url = self.format_civitai_url(lora_url)
-        else:
-            # WAN 2.2 Fast uses HuggingFace URLs directly, no formatting needed
-            formatted_lora_url = lora_url
+        # Format CivitAI URL with token (only needed for wan-2.1-lora with a LoRA)
+        formatted_lora_url = None
+        if lora_url:
+            if model == "wan-2.1-lora":
+                formatted_lora_url = self.format_civitai_url(lora_url)
+            else:
+                # WAN 2.2 Fast uses HuggingFace URLs directly, no formatting needed
+                formatted_lora_url = lora_url
         
         try:
             async with aiohttp.ClientSession() as session:
@@ -623,14 +630,12 @@ class ReplicateManager:
                 
                 # Build payload based on model
                 if model == "wan-2.2-fast":
-                    # WAN 2.2 Fast uses lora_weights_transformer
+                    # WAN 2.2 Fast - base payload
                     payload = {
                         'version': version_id,
                         'input': {
                             'image': f"data:image/jpeg;base64,{image_data}",
                             'prompt': prompt,
-                            'lora_weights_transformer': formatted_lora_url,
-                            'lora_scale_transformer': lora_scale,
                             'go_fast': True,
                             'num_frames': num_frames,
                             'frames_per_second': fps,
@@ -638,23 +643,30 @@ class ReplicateManager:
                             'disable_safety_checker': True
                         }
                     }
+                    # Add LoRA if provided
+                    if formatted_lora_url:
+                        payload['input']['lora_weights_transformer'] = formatted_lora_url
+                        payload['input']['lora_scale_transformer'] = lora_scale
                     # Add second LoRA if provided
                     if lora_url_2:
                         payload['input']['lora_weights_transformer_2'] = lora_url_2
                         payload['input']['lora_scale_transformer_2'] = lora_scale_2 or 1.0
                 else:  # wan-2.1-lora
-                    # WAN 2.1 uses hf_lora
+                    # WAN 2.1 - base payload
                     payload = {
                         'version': version_id,
                         'input': {
                             'image': f"data:image/jpeg;base64,{image_data}",
-                            'prompt': prompt,
-                            'hf_lora': formatted_lora_url,
-                            'lora_scale': lora_scale
+                            'prompt': prompt
                         }
                     }
+                    # Add LoRA if provided
+                    if formatted_lora_url:
+                        payload['input']['hf_lora'] = formatted_lora_url
+                        payload['input']['lora_scale'] = lora_scale
                 
-                logger.info(f"Creating WAN LoRA prediction with model: {model_id}, version: {version_id}")
+                lora_info = " with LoRA" if formatted_lora_url else " (no LoRA)"
+                logger.info(f"Creating WAN prediction{lora_info} with model: {model_id}, version: {version_id}")
                 
                 async with session.post('https://api.replicate.com/v1/predictions', 
                                        headers=headers, 
@@ -666,7 +678,7 @@ class ReplicateManager:
                     
                     prediction = await response.json()
                     prediction_id = prediction.get('id')
-                    logger.info(f"WAN LoRA prediction created with ID: {prediction_id}")
+                    logger.info(f"WAN prediction created with ID: {prediction_id}")
                     
                     # Poll for completion
                     return await self._poll_prediction(session, prediction_id, headers)
@@ -676,4 +688,82 @@ class ReplicateManager:
             return None
         except Exception as e:
             logger.error(f"Error in generate_wan_lora_video: {str(e)}", exc_info=True)
+            return None
+
+    async def generate_kling_lipsync(self, video_path: str, audio_path: str) -> str | None:
+        """Generate lipsynced video using Kling Lip Sync model (slower, high quality).
+        
+        Args:
+            video_path: Path to source video file
+            audio_path: Path to audio file for lipsync
+            
+        Returns:
+            URL to lipsynced video, or None if failed
+        """
+        logger.info(f"Generating Kling lipsync with video: {video_path}, audio: {audio_path}")
+        
+        try:
+            # Use replicate client library which handles file uploads and returns URLs
+            with open(video_path, "rb") as video_file, open(audio_path, "rb") as audio_file:
+                output = await asyncio.to_thread(
+                    self.replicate_client.run,
+                    "kwaivgi/kling-lip-sync",
+                    input={
+                        "video_url": video_file,  # Library auto-uploads and converts to URL
+                        "audio_url": audio_file   # Changed from 'audio' to 'audio_url'
+                    }
+                )
+                logger.info(f"Kling lipsync successful. Output: {output}")
+                # Output could be string or list
+                if isinstance(output, list) and len(output) > 0:
+                    return output[0]
+                return output
+                
+        except replicate.exceptions.ReplicateError as e:
+            logger.error(f"Replicate API error during Kling lipsync: {e}")
+            return None
+        except FileNotFoundError as e:
+            logger.error(f"File not found for Kling lipsync: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error in generate_kling_lipsync: {e}", exc_info=True)
+            return None
+
+    async def generate_pixverse_lipsync(self, video_path: str, audio_path: str) -> str | None:
+        """Generate lipsynced video using Pixverse Lipsync model (fast).
+        
+        Args:
+            video_path: Path to source video file
+            audio_path: Path to audio file for lipsync
+            
+        Returns:
+            URL to lipsynced video, or None if failed
+        """
+        logger.info(f"Generating Pixverse lipsync with video: {video_path}, audio: {audio_path}")
+        
+        try:
+            with open(video_path, "rb") as video_file, open(audio_path, "rb") as audio_file:
+                input_data = {
+                    "video": video_file,
+                    "audio": audio_file
+                }
+                output = await asyncio.to_thread(
+                    self.replicate_client.run,
+                    "pixverse/lipsync",
+                    input=input_data
+                )
+                logger.info(f"Pixverse lipsync successful. Output: {output}")
+                # Output could be string or list
+                if isinstance(output, list) and len(output) > 0:
+                    return output[0]
+                return output
+                
+        except replicate.exceptions.ReplicateError as e:
+            logger.error(f"Replicate API error during Pixverse lipsync: {e}")
+            return None
+        except FileNotFoundError as e:
+            logger.error(f"File not found for Pixverse lipsync: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error in generate_pixverse_lipsync: {e}", exc_info=True)
             return None

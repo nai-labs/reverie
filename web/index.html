@@ -36,6 +36,23 @@
                 </div>
             </div>
 
+            <!-- Scene Queue Panel -->
+            <div id="scene-queue-panel" class="scene-queue-panel hidden">
+                <div class="scene-queue-header" onclick="toggleSceneQueuePanel()">
+                    <span>🎬 Story Queue <span id="scene-count-badge" class="count-badge">0</span></span>
+                    <span class="toggle-arrow">▼</span>
+                </div>
+                <div class="scene-queue-content">
+                    <div id="scene-queue-container" class="scene-queue-container">
+                        <!-- Scene cards will be injected here -->
+                    </div>
+                    <div class="scene-queue-actions">
+                        <button id="compile-story-btn" class="compile-btn" disabled>🎥 Compile Story</button>
+                        <button id="clear-queue-btn" class="clear-btn">🗑️ Clear</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Input Area -->
             <div id="input-area">
                 <div class="input-wrapper">
@@ -57,7 +74,13 @@
                         <option value="hunyuan-avatar">Hunyuan Avatar</option>
                     </select>
                     <button id="gen-video-btn" class="action-btn">🎥 Generate</button>
-                    <button id="lora-video-btn" class="action-btn">🎬 LoRA</button>
+                    <button id="lora-video-btn" class="action-btn">🎬 WAN</button>
+                    <button id="script-tts-btn" class="action-btn">🎤 Script</button>
+                    <select id="lipsync-model-select" class="model-select">
+                        <option value="veed" selected>Veed (default)</option>
+                        <option value="pixverse">Pixverse (express)</option>
+                    </select>
+                    <button id="lipsync-btn" class="action-btn">🎙️ Lipsync</button>
                 </div>
             </div>
         </div>
@@ -137,7 +160,7 @@
         <!-- LoRA Video Modal -->
         <div id="lora-modal" class="modal hidden">
             <div class="modal-content">
-                <h2>LoRA Video Generation</h2>
+                <h2>WAN Video Generation</h2>
                 <div class="form-group">
                     <label for="wan-model-select">Model</label>
                     <select id="wan-model-select">
@@ -170,7 +193,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label>LoRA 1 <span id="selected-lora-name" style="color: #0ea5e9;"></span></label>
+                    <label>LoRA 1 (optional) <span id="selected-lora-name" style="color: #0ea5e9;"></span></label>
                     <div id="lora-grid" class="lora-grid"
                         style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 150px; overflow-y: auto; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">
                         <!-- Populated by JS -->
@@ -273,6 +296,22 @@
                     <button id="generate-lora-btn">Generate</button>
                     <button id="sync-loras-btn">📥 Sync to Local</button>
                     <button id="close-lora-btn">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Script TTS Modal -->
+        <div id="script-tts-modal" class="modal hidden">
+            <div class="modal-content">
+                <h2>🎤 Script TTS</h2>
+                <div class="form-group">
+                    <label for="tts-script-input">Enter script for character to speak:</label>
+                    <textarea id="tts-script-input" rows="4"
+                        placeholder="Type what you want the character to say..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button id="generate-script-tts-btn">🔊 Generate</button>
+                    <button id="close-script-tts-btn">Close</button>
                 </div>
             </div>
         </div>

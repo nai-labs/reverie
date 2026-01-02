@@ -113,7 +113,13 @@ class WavespeedManager:
     SUPPORTED_MODELS = {
         "infinitetalk": "wavespeed-ai/infinitetalk",
         "infinitetalk-fast": "wavespeed-ai/infinitetalk-fast",
-        "hunyuan-avatar": "wavespeed-ai/hunyuan-avatar"
+        "hunyuan-avatar": "wavespeed-ai/hunyuan-avatar",
+        "wan-s2v": "wavespeed-ai/wan-2.2/speech-to-video"
+    }
+    
+    # Lipsync models
+    LIPSYNC_MODELS = {
+        "veed": "veed/lipsync"
     }
     
     async def generate_video(
@@ -210,6 +216,85 @@ class WavespeedManager:
     async def generate_infinitetalk_video(self, image_path: str, audio_path: str, prompt: str = None, resolution: str = "480p") -> str | None:
         """Backward compatibility wrapper for generate_video with infinitetalk model."""
         return await self.generate_video(image_path, audio_path, model="infinitetalk", prompt=prompt, resolution=resolution)
+    
+    async def generate_lipsync(
+        self,
+        video_path: str,
+        audio_path: str,
+        model: str = "veed"
+    ) -> str | None:
+        """
+        Generate a lipsynced video using Wavespeed lipsync models.
+        
+        Args:
+            video_path: Path to the source video file
+            audio_path: Path to the audio file to sync
+            model: Lipsync model to use ("veed")
+        
+        Returns:
+            URL to the lipsynced video, or None if failed
+        """
+        if not self.api_key:
+            logger.error("WAVESPEED_API_KEY is not configured")
+            return None
+        
+        # Validate model
+        model_id = self.LIPSYNC_MODELS.get(model)
+        if not model_id:
+            logger.error(f"Unsupported lipsync model: {model}. Supported: {list(self.LIPSYNC_MODELS.keys())}")
+            return None
+        
+        logger.info(f"Generating lipsync video with {model} ({model_id})")
+        
+        try:
+            # Convert files to base64
+            video_data = await self._file_to_base64(video_path)
+            audio_data = await self._file_to_base64(audio_path)
+            
+            # Build request payload
+            payload = {
+                "video": video_data,
+                "audio": audio_data
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                # Submit the task
+                submit_url = f"{self.base_url}/{model_id}"
+                headers = self._get_headers()
+                
+                logger.info(f"Submitting lipsync task to: {submit_url}")
+                
+                async with session.post(submit_url, json=payload, headers=headers) as response:
+                    if response.status not in [200, 201]:
+                        error_text = await response.text()
+                        logger.error(f"Failed to submit lipsync task: {response.status} - {error_text}")
+                        return None
+                    
+                    data = await response.json()
+                    
+                    response_data = data.get('data', data)
+                    request_id = response_data.get('id') or response_data.get('requestId') or response_data.get('request_id')
+                    
+                    if not request_id:
+                        logger.error(f"No request ID in response: {data}")
+                        return None
+                    
+                    logger.info(f"Lipsync task submitted with ID: {request_id}")
+                    
+                    # Poll for result
+                    video_url = await self._poll_for_result(session, request_id)
+                    
+                    if video_url:
+                        logger.info(f"Lipsync video generated successfully: {video_url}")
+                    
+                    return video_url
+                    
+        except FileNotFoundError as e:
+            logger.error(f"File not found: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error generating lipsync video: {e}", exc_info=True)
+            return None
     
     async def test_auth(self) -> bool:
         """Test authentication with Wavespeed API."""

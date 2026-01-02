@@ -29,7 +29,7 @@ Thumbs.db
 # Project specific
 *.log
 *.mp3
-*.mp4
+
 *.wav
 *.jpg
 *.png

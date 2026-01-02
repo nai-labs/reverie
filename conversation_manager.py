@@ -17,6 +17,7 @@ class ConversationManager:
         self.log_file_name_response = None
         self.last_audio_path = None
         self.last_selfie_path = None
+        self.last_video_path = None
         self.output_folder = os.path.join(os.getcwd(), 'output')
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
@@ -287,6 +288,28 @@ class ConversationManager:
         if image_files:
             return os.path.join(self.subfolder_path, max(image_files, key=lambda x: os.path.getctime(os.path.join(self.subfolder_path, x))))
         return None
+
+    def get_last_audio_path(self):
+        """Get the path of the last generated audio."""
+        if self.last_audio_path and os.path.exists(self.last_audio_path):
+            return self.last_audio_path
+        return self.get_last_audio_file()
+    
+    def get_last_video_path(self):
+        """Get the path of the last generated video."""
+        if self.last_video_path and os.path.exists(self.last_video_path):
+            return self.last_video_path
+        # Fallback: find most recent mp4 in folder
+        if self.subfolder_path:
+            video_files = [f for f in os.listdir(self.subfolder_path) if f.endswith('.mp4')]
+            if video_files:
+                return os.path.join(self.subfolder_path, max(video_files, key=lambda x: os.path.getctime(os.path.join(self.subfolder_path, x))))
+        return None
+    
+    def set_last_video_path(self, video_path):
+        """Set the path of the last generated video."""
+        self.last_video_path = video_path
+        self.save_message_to_log("Bot", f"Generated video: {os.path.basename(video_path)}")
 
     def get_last_audio_and_selfie(self):
         return self.last_audio_path, self.last_selfie_path
