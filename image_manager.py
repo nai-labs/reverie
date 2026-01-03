@@ -262,6 +262,113 @@ class ImageManager:
         image.save(image_file_path)
         return image_file_path
 
+    async def apply_faceswap(self, image_path: str) -> str:
+        """Apply ReActor face swap to an existing image using img2img with denoising_strength=0.
+        
+        Args:
+            image_path: Path to the source image to face-swap
+            
+        Returns:
+            Path to the face-swapped image, or None if failed
+        """
+        import base64
+        
+        logger.info(f"[FaceSwap] Applying face swap to: {image_path}")
+        
+        # Read and encode the source image
+        with open(image_path, "rb") as f:
+            image_base64 = base64.b64encode(f.read()).decode("utf-8")
+        
+        # ReActor args - same as generate_image but always enabled
+        reactor_args = [
+            None,  # Placeholder for img_base64
+            True,  # Enable ReActor
+            '0',  # Comma separated face number(s) from swap-source image
+            '0',  # Comma separated face number(s) for target image (result)
+            INSIGHTFACE_MODEL_PATH,  # Model path
+            'CodeFormer',  # Restore Face: None; CodeFormer; GFPGAN
+            1,  # Restore visibility value
+            True,  # Restore face -> Upscale
+            'None',  # Upscaler (type 'None' if doesn't need)
+            1.5,  # Upscaler scale value
+            1,  # Upscaler visibility (if scale = 1)
+            False,  # Swap in source image
+            True,  # Swap in generated image
+            1,  # Console Log Level (0 - min, 1 - med or 2 - max)
+            0,  # Gender Detection (Source) (0 - No, 1 - Female Only, 2 - Male Only)
+            0,  # Gender Detection (Target) (0 - No, 1 - Female Only, 2 - Male Only)
+            False,  # Save the original image(s) made before swapping
+            0.5,  # CodeFormer Weight (0 = maximum effect, 1 = minimum effect), 0.5 - by default
+            False,  # Source Image Hash Check, True - by default
+            False,  # Target Image Hash Check, False - by default
+            "CUDA",  # CPU or CUDA (if you have it), CPU - by default
+            True,  # Face Mask Correction
+            2,  # Select Source, 0 - Image, 1 - Face Model, 2 - Source Folder
+            "elena.safetensors",  # Filename of the face model
+            self.source_faces_folder,  # The path to the folder containing source faces images
+            None,  # skip it for API
+            True,  # Randomly select an image from the path
+            True,  # Force Upscale even if no face found
+            0.6,  # Face Detection Threshold
+            2,  # Maximum number of faces to detect (0 is unlimited)
+        ]
+        
+        # img2img payload with proper XL settings but low denoising to preserve original
+        # Need proper model/sampler settings so the output isn't garbage
+        payload = {
+            "init_images": [image_base64],
+            "denoising_strength": 0.1,  # Very low - preserves most of original but runs proper inference
+            "prompt": "photo of a person",  # Simple prompt to avoid dynamic prompts error
+            "negative_prompt": "",
+            "steps": 15,  # Enough steps to run ReActor properly
+            "sampler_name": IMAGE_SAMPLER,  # DPM++ 2M SDE
+            "scheduler": "Karras",
+            "width": IMAGE_WIDTH,
+            "height": IMAGE_HEIGHT,
+            "seed": -1,
+            "cfg_scale": IMAGE_GUIDANCE_SCALE,  # 4
+            "alwayson_scripts": {"reactor": {"args": reactor_args}},
+            "override_settings": {
+                "sd_model_checkpoint": DEFAULT_SD_MODEL,  # Use default XL model
+                "sd_vae": "Automatic",
+                "forge_additional_modules": [],
+                "CLIP_stop_at_last_layers": 2
+            }
+        }
+        
+        img2img_url = STABLE_DIFFUSION_URL.replace("txt2img", "img2img")
+        logger.info(f"[FaceSwap] Sending to img2img API: {img2img_url}")
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(img2img_url, json=payload, headers={'Content-Type': 'application/json'}) as response:
+                    if response.status == 200:
+                        r = await response.json()
+                        if 'images' in r and len(r['images']) > 0:
+                            # Save the face-swapped image
+                            result_data = r['images'][0]
+                            result_image = Image.open(io.BytesIO(base64.b64decode(result_data.split(",", 1)[0])))
+                            
+                            # Save with new filename
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            output_filename = f"faceswap_{timestamp}.png"
+                            output_path = os.path.join(self.conversation_manager.subfolder_path, output_filename)
+                            result_image.save(output_path)
+                            
+                            logger.info(f"[FaceSwap] Success! Saved to: {output_path}")
+                            return output_path
+                        else:
+                            logger.error("[FaceSwap] No images in response")
+                            return None
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"[FaceSwap] API error {response.status}: {error_text}")
+                        return None
+        except Exception as e:
+            logger.error(f"[FaceSwap] Exception: {e}")
+            return None
+
+
     async def generate_wan_video_prompt(self, conversation):
         """Generates a detailed action prompt for video based on the last assistant message."""
         

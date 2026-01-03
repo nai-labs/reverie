@@ -7,8 +7,35 @@ let character = urlParams.get('character') || "Anika";
 let resumeSessionParam = urlParams.get('resume') || null;  // Optional session to resume
 let sessionPassword = null;
 
-// Scene Queue State
+// Scene Queue State (persisted to localStorage)
 let sceneQueue = [];  // Array of {url, type, timestamp}
+const SCENE_QUEUE_STORAGE_KEY = 'reverie_scene_queue';
+
+// Load scene queue from localStorage
+function loadSceneQueueFromStorage() {
+    try {
+        const stored = localStorage.getItem(SCENE_QUEUE_STORAGE_KEY);
+        if (stored) {
+            sceneQueue = JSON.parse(stored);
+            console.log(`[SceneQueue] Restored ${sceneQueue.length} items from localStorage`);
+        }
+    } catch (e) {
+        console.error('[SceneQueue] Failed to load from localStorage:', e);
+        sceneQueue = [];
+    }
+}
+
+// Save scene queue to localStorage
+function saveSceneQueueToStorage() {
+    try {
+        localStorage.setItem(SCENE_QUEUE_STORAGE_KEY, JSON.stringify(sceneQueue));
+    } catch (e) {
+        console.error('[SceneQueue] Failed to save to localStorage:', e);
+    }
+}
+
+// Load immediately on script init
+loadSceneQueueFromStorage();
 
 // Elements
 const messagesDiv = document.getElementById('messages');
@@ -82,6 +109,12 @@ async function init() {
     } catch (error) {
         console.error('Init failed:', error);
         addSystemMessage('Failed to connect to server.');
+    }
+
+    // Restore scene queue UI if there are saved items
+    if (sceneQueue.length > 0) {
+        renderSceneQueue();
+        showSceneQueuePanel();
     }
 }
 
@@ -365,6 +398,9 @@ function addToSceneQueue(url, type, elementId, btn, mediaType = 'video') {
         timestamp: Date.now()
     });
 
+    // Persist to localStorage
+    saveSceneQueueToStorage();
+
     // Update button state
     if (btn) {
         btn.textContent = '✓ Added';
@@ -378,6 +414,7 @@ function addToSceneQueue(url, type, elementId, btn, mediaType = 'video') {
 
 function removeFromSceneQueue(index) {
     sceneQueue.splice(index, 1);
+    saveSceneQueueToStorage();
     renderSceneQueue();
 
     // Hide panel if empty
@@ -435,6 +472,7 @@ function renderSceneQueue() {
 
 function clearSceneQueue() {
     sceneQueue = [];
+    saveSceneQueueToStorage();
     renderSceneQueue();
     hideSceneQueuePanel();
 
@@ -516,7 +554,7 @@ async function compileStory() {
 
 // Extract last frame from video and set as current image
 async function extractLastFrame(videoUrl) {
-    addSystemMessage('Extracting last frame from video...');
+    addSystemMessage('Extracting last frame and applying face swap...');
 
     try {
         const response = await fetch(`${API_BASE}/extract-frame`, {
@@ -531,8 +569,8 @@ async function extractLastFrame(videoUrl) {
         }
 
         const data = await response.json();
-        addSystemMessage('Last frame extracted and set as current image!');
-        addImage(data.image_url, 'Last frame from video');
+        addSystemMessage('Frame extracted with face swap applied!');
+        addImage(data.image_url, 'Face-swapped frame');
 
     } catch (error) {
         console.error('Frame extraction failed:', error);

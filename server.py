@@ -378,24 +378,27 @@ async def generate_script_tts(request: ScriptTTSRequest):
 
 @app.post("/api/generate/image")
 async def generate_image(model: str = "z-image-turbo"):
-    """Generate image with specified model. Options: z-image-turbo, xl-lustify, xl-epicrealism"""
+    """Generate image with specified model."""
     if not state.image_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
     
-    # Map model to sd_mode and checkpoint
-    from config import DEFAULT_SD_MODEL, EPICREALISM_SD_MODEL
-    if model == "z-image-turbo":
-        sd_mode = "lumina"
-        sd_checkpoint = None  # Uses default lumina model
-    elif model == "xl-lustify":
-        sd_mode = "xl"
-        sd_checkpoint = DEFAULT_SD_MODEL
-    elif model == "xl-epicrealism":
-        sd_mode = "xl"
-        sd_checkpoint = EPICREALISM_SD_MODEL
-    else:
-        sd_mode = "lumina"
-        sd_checkpoint = None
+    # Map model value to checkpoint filename
+    # Model value format: lowercase-with-dashes from frontend
+    MODEL_VALUE_MAP = {
+        "z-image-turbo": ("lumina", None),
+        "xl-lustify": ("xl", "lustifySDXLNSFW_ggwpV7.safetensors"),
+        "xl-epicrealism": ("xl", "epicrealismXL_vxviiCrystalclear.safetensors"),
+        "biglove-insta": ("xl", "bigLove_insta1.safetensors"),
+        "mohawk-v20": ("xl", "MOHAWK_v20.safetensors"),
+        "colossus-xl": ("xl", "colossusProjectXLSFW_12cExperimental3.safetensors"),
+        "juggernaut-xl": ("xl", "juggernautXL_v8Rundiffusion.safetensors"),
+        "pikon-realism": ("xl", "pikonRealism_v2.safetensors"),
+        "realistic-stock": ("xl", "realisticStockPhoto_v20.safetensors"),
+        "unstable-illusion": ("xl", "unstableIllusion_sdxxl.safetensors"),
+        "unstable-illusion-v2": ("xl", "unstableIllusion_sdxxxlV2.safetensors"),
+    }
+    
+    sd_mode, sd_checkpoint = MODEL_VALUE_MAP.get(model, ("lumina", None))
     
     logger.info(f"[Image Gen] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}")
     
@@ -438,20 +441,22 @@ async def generate_image_direct(model: str = "z-image-turbo"):
     if not state.image_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
     
-    # Map model to sd_mode and checkpoint
-    from config import DEFAULT_SD_MODEL, EPICREALISM_SD_MODEL
-    if model == "z-image-turbo":
-        sd_mode = "lumina"
-        sd_checkpoint = None
-    elif model == "xl-lustify":
-        sd_mode = "xl"
-        sd_checkpoint = DEFAULT_SD_MODEL
-    elif model == "xl-epicrealism":
-        sd_mode = "xl"
-        sd_checkpoint = EPICREALISM_SD_MODEL
-    else:
-        sd_mode = "lumina"
-        sd_checkpoint = None
+    # Map model value to checkpoint filename
+    MODEL_VALUE_MAP = {
+        "z-image-turbo": ("lumina", None),
+        "xl-lustify": ("xl", "lustifySDXLNSFW_ggwpV7.safetensors"),
+        "xl-epicrealism": ("xl", "epicrealismXL_vxviiCrystalclear.safetensors"),
+        "biglove-insta": ("xl", "bigLove_insta1.safetensors"),
+        "mohawk-v20": ("xl", "MOHAWK_v20.safetensors"),
+        "colossus-xl": ("xl", "colossusProjectXLSFW_12cExperimental3.safetensors"),
+        "juggernaut-xl": ("xl", "juggernautXL_v8Rundiffusion.safetensors"),
+        "pikon-realism": ("xl", "pikonRealism_v2.safetensors"),
+        "realistic-stock": ("xl", "realisticStockPhoto_v20.safetensors"),
+        "unstable-illusion": ("xl", "unstableIllusion_sdxxl.safetensors"),
+        "unstable-illusion-v2": ("xl", "unstableIllusion_sdxxxlV2.safetensors"),
+    }
+    
+    sd_mode, sd_checkpoint = MODEL_VALUE_MAP.get(model, ("lumina", None))
     
     logger.info(f"[Direct Image] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}")
     
@@ -1020,12 +1025,23 @@ async def extract_frame(request: ExtractFrameRequest):
             logger.error(f"[Extract Frame] FFmpeg error: {result.stderr}")
             raise HTTPException(status_code=500, detail="Failed to extract frame")
         
-        logger.info(f"[Extract Frame] Success! Output: {output_path}")
+        logger.info(f"[Extract Frame] Frame extracted: {output_path}")
+        
+        # Apply face swap using ReActor (if image_manager is available)
+        final_path = output_path
+        if state.image_manager:
+            logger.info("[Extract Frame] Applying face swap...")
+            faceswap_path = await state.image_manager.apply_faceswap(output_path)
+            if faceswap_path:
+                final_path = faceswap_path
+                logger.info(f"[Extract Frame] Face swap applied: {final_path}")
+            else:
+                logger.warning("[Extract Frame] Face swap failed, using original frame")
         
         # Set as last selfie path for next video generation
-        state.conversation_manager.set_last_selfie_path(output_path)
+        state.conversation_manager.set_last_selfie_path(final_path)
         
-        relative_path = os.path.relpath(output_path, start=os.getcwd())
+        relative_path = os.path.relpath(final_path, start=os.getcwd())
         relative_path = relative_path.replace("\\", "/")
         
         return {

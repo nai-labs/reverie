@@ -14,7 +14,10 @@ import winsound
 import threading
 from users import users, list_users
 from characters import characters
-from config import CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL, IMAGE_WIDTH, IMAGE_HEIGHT, IMAGE_STEPS, IMAGE_GUIDANCE_SCALE, IMAGE_SAMPLER, DEFAULT_SD_MODEL
+from config import (CLAUDE_MODELS, OPENROUTER_MODELS, DEFAULT_CLAUDE_MODEL, IMAGE_WIDTH, IMAGE_HEIGHT, 
+                     IMAGE_STEPS, IMAGE_GUIDANCE_SCALE, IMAGE_SAMPLER, DEFAULT_SD_MODEL, EPICREALISM_SD_MODEL,
+                     LUMINA_SD_MODEL, LUMINA_VAE, LUMINA_TEXT_ENCODER, LUMINA_SAMPLER, LUMINA_SCHEDULER,
+                     LUMINA_STEPS, LUMINA_CFG_SCALE, SD_MODELS)
 from database_manager import DatabaseManager
 from conversation_manager import ConversationManager
 from chub_importer import ChubImporter
@@ -1218,6 +1221,31 @@ class BotLauncher:
                 text_color=COLORS["text_primary"]
             ).pack(anchor="w", padx=10, pady=(10, 5))
             
+            # Model selection dropdown
+            model_frame = ctk.CTkFrame(ref_frame, fg_color="transparent")
+            model_frame.pack(anchor="w", padx=10, pady=(0, 10))
+            
+            ctk.CTkLabel(
+                model_frame,
+                text="Model:",
+                font=("Segoe UI", 10),
+                text_color=COLORS["text_secondary"]
+            ).pack(side="left", padx=(0, 10))
+            
+            image_model_var = ctk.StringVar(value="Z-Image Turbo")
+            image_model_combo = ctk.CTkComboBox(
+                model_frame,
+                values=list(SD_MODELS.keys()),
+                variable=image_model_var,
+                width=180,
+                fg_color=COLORS["input_bg"],
+                border_color=COLORS["border"],
+                button_color=COLORS["accent_cyan"],
+                dropdown_fg_color=COLORS["bg_secondary"],
+                dropdown_text_color=COLORS["text_primary"]
+            )
+            image_model_combo.pack(side="left")
+            
             # Image preview placeholder
             ref_image_label = ctk.CTkLabel(
                 ref_frame,
@@ -1226,13 +1254,25 @@ class BotLauncher:
                 height=200,
                 fg_color=COLORS["input_bg"],
                 corner_radius=10,
-                text_color=COLORS["text_secondary"]
+                text_color=COLORS["text_secondary"],
+                cursor="hand2"  # Show hand cursor to indicate clickable
             )
             ref_image_label.pack(pady=10)
             
-            # Store reference for the generated image path
-            ref_image_path = {"path": None}
+            # Store reference for the generated image path (folder and full image path)
+            ref_image_path = {"path": None, "image_file": None}
             photo_ref = {"photo": None}  # Keep reference to prevent garbage collection
+            
+            def open_full_image(event=None):
+                """Open the full-size image in the default browser."""
+                import webbrowser
+                if ref_image_path["image_file"] and os.path.exists(ref_image_path["image_file"]):
+                    # Convert backslashes to forward slashes for file:// URL
+                    url_path = ref_image_path["image_file"].replace("\\", "/")
+                    webbrowser.open(f'file:///{url_path}')
+            
+            # Bind click event to open full image
+            ref_image_label.bind("<Button-1>", open_full_image)
             
             def generate_reference_image():
                 """Generate a reference portrait image using Stable Diffusion."""
@@ -1247,31 +1287,70 @@ class BotLauncher:
                     messagebox.showwarning("Wait", "Please wait for the image prompt to be generated first.")
                     return
                 
+                # Get selected model
+                selected_model = image_model_var.get()
+                
                 # Update status
-                ref_image_label.configure(text="⏳ Generating reference image...")
+                ref_image_label.configure(text=f"⏳ Generating with {selected_model}...")
                 dialog.update()
                 
                 async def generate():
                     # Portrait prompt - selfie-style for face swap reference
                     portrait_prompt = f"amateur selfie photo of {prompt}, looking at camera, natural lighting, upper body visible, casual pose, high quality"
                     
-                    # Use XL mode params from config with model override
-                    payload = {
-                        "prompt": portrait_prompt,
-                        "steps": IMAGE_STEPS,
-                        "sampler_name": IMAGE_SAMPLER,
-                        "scheduler": "Karras",
-                        "width": IMAGE_WIDTH,
-                        "height": IMAGE_HEIGHT,
-                        "seed": -1,
-                        "cfg_scale": IMAGE_GUIDANCE_SCALE,
-                        "override_settings": {
-                            "sd_model_checkpoint": DEFAULT_SD_MODEL,
-                            "sd_vae": "Automatic",
-                            "forge_additional_modules": [],
-                            "CLIP_stop_at_last_layers": 2
+                    # Build payload based on selected model (matching image_manager.py patterns)
+                    if selected_model == "Z-Image Turbo":
+                        # Z-Image/Lumina mode
+                        payload = {
+                            "prompt": portrait_prompt,
+                            "steps": LUMINA_STEPS,
+                            "sampler_name": LUMINA_SAMPLER,
+                            "scheduler": LUMINA_SCHEDULER,
+                            "width": IMAGE_WIDTH,
+                            "height": IMAGE_HEIGHT,
+                            "seed": -1,
+                            "cfg_scale": LUMINA_CFG_SCALE,
+                            "alwayson_scripts": {
+                                "ADetailer": {
+                                    "args": [True, False, {"ad_model": "face_yolov8n.pt"}]
+                                }
+                            },
+                            "override_settings": {
+                                "sd_model_checkpoint": LUMINA_SD_MODEL,
+                                "sd_vae": LUMINA_VAE,
+                                "forge_additional_modules": [
+                                    f"C:\\AI\\ForgeUI\\models\\VAE\\{LUMINA_VAE}",
+                                    f"C:\\AI\\ForgeUI\\models\\text_encoder\\{LUMINA_TEXT_ENCODER}"
+                                ]
+                            }
                         }
-                    }
+                    else:
+                        # SDXL mode - get checkpoint from SD_MODELS dict
+                        xl_checkpoint = SD_MODELS.get(selected_model, DEFAULT_SD_MODEL)
+                        
+                        payload = {
+                            "prompt": portrait_prompt,
+                            "steps": IMAGE_STEPS,
+                            "sampler_name": IMAGE_SAMPLER,
+                            "scheduler": "Karras",
+                            "width": IMAGE_WIDTH,
+                            "height": IMAGE_HEIGHT,
+                            "seed": -1,
+                            "cfg_scale": IMAGE_GUIDANCE_SCALE,
+                            "alwayson_scripts": {
+                                "ADetailer": {
+                                    "args": [True, False, {"ad_model": "face_yolov8n.pt"}]
+                                }
+                            },
+                            "override_settings": {
+                                "sd_model_checkpoint": xl_checkpoint,
+                                "sd_vae": "Automatic",
+                                "forge_additional_modules": [],
+                                "CLIP_stop_at_last_layers": 2
+                            }
+                        }
+                    
+                    print(f"[Char Import] Generating with model: {selected_model}")
                     
                     try:
                         async with aiohttp.ClientSession() as session:
@@ -1310,6 +1389,7 @@ class BotLauncher:
                     image_path = os.path.join(faces_folder, "reference_1.png")
                     image.save(image_path)
                     ref_image_path["path"] = faces_folder
+                    ref_image_path["image_file"] = image_path  # Store full path for click-to-open
                     
                     # Display thumbnail in dialog
                     display_image = image.copy()
@@ -1318,7 +1398,7 @@ class BotLauncher:
                     photo_ref["photo"] = photo  # Keep reference
                     ref_image_label.configure(image=photo, text="")
                     
-                    status_label.configure(text=f"✅ Reference image saved to: {faces_folder}")
+                    status_label.configure(text=f"✅ Reference image saved. Click thumbnail to view full size.")
                 else:
                     ref_image_label.configure(text="❌ Failed to generate.\nIs Stable Diffusion running?")
             
@@ -1714,16 +1794,47 @@ Generate ONLY the 3 scenarios separated by |||"""
         # Image Preview Section
         ctk.CTkLabel(main_frame, text="Reference Image:", font=("Segoe UI", 12, "bold"), text_color=COLORS["text_primary"]).pack(anchor="w", pady=(15, 2))
         
+        # Model selection dropdown for image generation
+        img_model_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        img_model_frame.pack(anchor="w", pady=(0, 5))
+        
+        ctk.CTkLabel(img_model_frame, text="Model:", font=("Segoe UI", 10), text_color=COLORS["text_secondary"]).pack(side="left", padx=(0, 10))
+        
+        img_model_var = ctk.StringVar(value="Z-Image Turbo")
+        img_model_combo = ctk.CTkComboBox(
+            img_model_frame,
+            values=list(SD_MODELS.keys()),
+            variable=img_model_var,
+            width=180,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            button_color=COLORS["accent_cyan"],
+            dropdown_fg_color=COLORS["bg_secondary"],
+            dropdown_text_color=COLORS["text_primary"]
+        )
+        img_model_combo.pack(side="left")
+        
         preview_frame = ctk.CTkFrame(main_frame, fg_color=COLORS["input_bg"], height=250, width=300)
         preview_frame.pack(pady=5)
         preview_frame.pack_propagate(False)
         
-        preview_label = ctk.CTkLabel(preview_frame, text="No image generated yet", text_color=COLORS["text_secondary"])
+        preview_label = ctk.CTkLabel(preview_frame, text="No image generated yet", text_color=COLORS["text_secondary"], cursor="hand2")
         preview_label.pack(expand=True)
         
         # Store the generated image path
         generated_image_path = [None]
         photo_ref = [None]  # Keep reference to prevent garbage collection
+        
+        def open_full_image(event=None):
+            """Open the full-size image in the default browser."""
+            import webbrowser
+            if generated_image_path[0] and os.path.exists(generated_image_path[0]):
+                # Convert backslashes to forward slashes for file:// URL
+                url_path = generated_image_path[0].replace("\\", "/")
+                webbrowser.open(f'file:///{url_path}')
+        
+        # Bind click event to open full image
+        preview_label.bind("<Button-1>", open_full_image)
         
         # Image generation buttons
         img_btn_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
@@ -1800,7 +1911,8 @@ Generate ONLY the 3 scenarios separated by |||"""
                 messagebox.showwarning("No Prompt", "Please generate or enter an image prompt first.")
                 return
             
-            status_label.configure(text="Generating image...")
+            selected_model = img_model_var.get()
+            status_label.configure(text=f"Generating image with {selected_model}...")
             generate_img_btn.configure(state="disabled")
             
             def do_generate():
@@ -1808,16 +1920,59 @@ Generate ONLY the 3 scenarios separated by |||"""
                     import requests
                     sd_url = os.getenv("SD_URL", "http://127.0.0.1:7860")
                     
-                    payload = {
-                        "prompt": img_prompt,
-                        "steps": 8,
-                        "sampler_name": "Euler",
-                        "scheduler": "beta",
-                        "width": 512,
-                        "height": 768,
-                        "seed": -1,
-                        "cfg_scale": 1
-                    }
+                    # Build payload based on selected model (matching image_manager.py patterns)
+                    if selected_model == "Z-Image Turbo":
+                        # Z-Image/Lumina mode
+                        payload = {
+                            "prompt": img_prompt,
+                            "steps": LUMINA_STEPS,
+                            "sampler_name": LUMINA_SAMPLER,
+                            "scheduler": LUMINA_SCHEDULER,
+                            "width": IMAGE_WIDTH,
+                            "height": IMAGE_HEIGHT,
+                            "seed": -1,
+                            "cfg_scale": LUMINA_CFG_SCALE,
+                            "alwayson_scripts": {
+                                "ADetailer": {
+                                    "args": [True, False, {"ad_model": "face_yolov8n.pt"}]
+                                }
+                            },
+                            "override_settings": {
+                                "sd_model_checkpoint": LUMINA_SD_MODEL,
+                                "sd_vae": LUMINA_VAE,
+                                "forge_additional_modules": [
+                                    f"C:\\AI\\ForgeUI\\models\\VAE\\{LUMINA_VAE}",
+                                    f"C:\\AI\\ForgeUI\\models\\text_encoder\\{LUMINA_TEXT_ENCODER}"
+                                ]
+                            }
+                        }
+                    else:
+                        # SDXL mode - get checkpoint from SD_MODELS dict
+                        xl_checkpoint = SD_MODELS.get(selected_model, DEFAULT_SD_MODEL)
+                        
+                        payload = {
+                            "prompt": img_prompt,
+                            "steps": IMAGE_STEPS,
+                            "sampler_name": IMAGE_SAMPLER,
+                            "scheduler": "Karras",
+                            "width": IMAGE_WIDTH,
+                            "height": IMAGE_HEIGHT,
+                            "seed": -1,
+                            "cfg_scale": IMAGE_GUIDANCE_SCALE,
+                            "alwayson_scripts": {
+                                "ADetailer": {
+                                    "args": [True, False, {"ad_model": "face_yolov8n.pt"}]
+                                }
+                            },
+                            "override_settings": {
+                                "sd_model_checkpoint": xl_checkpoint,
+                                "sd_vae": "Automatic",
+                                "forge_additional_modules": [],
+                                "CLIP_stop_at_last_layers": 2
+                            }
+                        }
+                    
+                    print(f"[Create Char] Generating with model: {selected_model}")
                     
                     response = requests.post(f"{sd_url}/sdapi/v1/txt2img", json=payload, timeout=120)
                     response.raise_for_status()
@@ -1846,7 +2001,7 @@ Generate ONLY the 3 scenarios separated by |||"""
                     photo = ImageTk.PhotoImage(img)
                     photo_ref[0] = photo
                     preview_label.configure(image=photo, text="")
-                    status_label.configure(text="Image generated!")
+                    status_label.configure(text="Image generated! Click to view full size.")
                     reroll_btn.configure(state="normal")
                 except Exception as e:
                     status_label.configure(text=f"Preview error: {e}")

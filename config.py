@@ -142,6 +142,21 @@ IMAGE_SAMPLER = "DPM++ 2M SDE"  # Sampler from UI
 DEFAULT_SD_MODEL = "lustifySDXLNSFW_ggwpV7.safetensors"
 EPICREALISM_SD_MODEL = "epicrealismXL_vxviiCrystalclear.safetensors"
 
+# All available SD models (display name -> filename)
+SD_MODELS = {
+    "Z-Image Turbo": "z-image-turbo-q4_k_m.gguf",  # Special Lumina mode
+    "XL Lustify": "lustifySDXLNSFW_ggwpV7.safetensors",
+    "XL EpicRealism": "epicrealismXL_vxviiCrystalclear.safetensors",
+    "BigLove Insta": "bigLove_insta1.safetensors",
+    "MOHAWK v20": "MOHAWK_v20.safetensors",
+    "Colossus XL": "colossusProjectXLSFW_12cExperimental3.safetensors",
+    "Juggernaut XL": "juggernautXL_v8Rundiffusion.safetensors",
+    "Pikon Realism": "pikonRealism_v2.safetensors",
+    "Realistic Stock": "realisticStockPhoto_v20.safetensors",
+    "Unstable Illusion": "unstableIllusion_sdxxl.safetensors",
+    "Unstable Illusion V2": "unstableIllusion_sdxxxlV2.safetensors",
+}
+
 # Z-Image mode settings (GGUF quantized for better VRAM efficiency)
 LUMINA_SD_MODEL = "z-image-turbo-q4_k_m.gguf"
 LUMINA_VAE = "z_ae.safetensors"
