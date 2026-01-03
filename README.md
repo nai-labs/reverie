@@ -15,10 +15,16 @@ A powerful, standalone local AI roleplay platform that brings your characters to
 *   **Chub.ai Character Import**: One-click import of character cards from Chub.ai with auto-generated image prompts and scenarios.
 *   **Multi-LLM Support**: Seamlessly switch between Anthropic (Claude), OpenRouter, and LMStudio models.
 *   **Real-Time TTS**: Integrated ElevenLabs Text-to-Speech with auto-play and voice direction.
+*   **Script TTS**: Generate TTS from custom scripts, bypassing conversation context.
 *   **Multimedia Generation**:
-    *   **Selfies**: Generate context-aware images of your character on demand.
-    *   **Videos**: Create short video clips from generated images using Replicate or Wavespeed.
+    *   **Selfies**: Generate context-aware images with 11 SD model options (Z-Image Turbo, XL Lustify, EpicRealism, Juggernaut, and more).
+    *   **Videos**: Create short video clips using Replicate or Wavespeed (WAN S2V, InfiniteTalk, Hunyuan Avatar).
     *   **LoRA Videos**: Generate videos with custom LoRA styles using WAN 2.1/2.2 models.
+    *   **Lipsync**: Apply lipsync to videos using VEED or Kling models.
+*   **Story Queue**: Mark images/videos for export, compile into a single concatenated video with FFmpeg.
+*   **Face Swap Consistency**: When using "Use Last Frame" on videos, ReActor face swap is automatically applied for consistent character faces across clips.
+*   **Session Resume**: Save and resume chat sessions, preserving conversation history and generated media.
+*   **Export Sessions**: Download full sessions as ZIP files with all media and history.
 *   **Remote Access**: Securely access your session from other devices on your local network with password protection.
 *   **Dynamic Settings**: Adjust system prompts, image prompts, and voice settings directly from the web UI.
 
@@ -95,23 +101,53 @@ Generate videos with custom LoRA styles using the WAN 2.1/2.2 models on Replicat
         "my_preset": {
             "url": "https://huggingface.co/user/model/resolve/main/lora.safetensors",
             "prompt": "Pre-filled prompt for this LoRA",
-            "scale": 1.0
+            "scale": 1.0,
+            "category": "style"
         }
     }
     ```
 3.  For CivitAI LoRAs, add `CIVITAI_API_TOKEN` to your `.env` file
 
+### LoRA Categories
+
+LoRAs are organized into tabs by category for easy browsing:
+- **Style**: Visual styles (anime, cinematic, etc.)
+- **Action**: Movement and dynamic effects
+- **Character**: Character-specific LoRAs
+- **Other**: Uncategorized LoRAs
+
+You can also mark LoRAs as **Favorites** (⭐) for quick access.
+
 ### Usage
 
 1.  Generate an image first (the LoRA video uses the last generated image)
 2.  Click the **🎬 LoRA** button
-3.  Select a preset or enter a custom URL
+3.  Browse categories or select from Favorites
 4.  Adjust frames (81-121) and FPS (5-30)
 5.  Click **Generate**
 
 ### Backup LoRAs
 
 Use the **📥 Sync to Local** button to download all preset LoRAs to the `custom_loras/` folder for backup.
+
+## 🎞️ Story Queue
+
+Compile multiple images and videos into a single concatenated video.
+
+### Usage
+
+1.  As you generate images and videos during chat, click **➕ Add to Story** on any media
+2.  The Story Queue panel appears showing your selected clips
+3.  Reorder or remove clips as needed
+4.  Click **🎥 Compile Story** when ready - FFmpeg combines them into one video
+5.  The queue persists in browser storage, surviving page refreshes
+
+### Face Swap on Frame Extraction
+
+When you click **Use Last Frame** on a video:
+1.  The last frame is extracted with FFmpeg
+2.  ReActor face swap is automatically applied using your character's source faces
+3.  This ensures consistent faces when concatenating multiple video clips
 
 ## ⚙️ Configuration
 
