@@ -883,3 +883,72 @@ button {
 .video-actions .add-to-story-btn {
     margin-top: 0;
 }
+
+/* Image action buttons container */
+.image-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.image-actions .add-to-story-btn {
+    margin-top: 0;
+}
+
+/* Edit Image button */
+.edit-image-btn {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.2));
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.edit-image-btn:hover {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(245, 158, 11, 0.3));
+    transform: translateY(-1px);
+}
+
+/* Faceswap button */
+.faceswap-btn {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(139, 92, 246, 0.2));
+    border: 1px solid rgba(168, 85, 247, 0.4);
+    color: #a855f7;
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.faceswap-btn:hover {
+    background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(139, 92, 246, 0.3));
+    transform: translateY(-1px);
+}
+
+.faceswap-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+}
+
+/* Submit edit button styling */
+#submit-edit-btn {
+    background: var(--accent-gradient);
+    color: white;
+}
+
+#close-edit-btn {
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+}
+
+#close-edit-btn:hover {
+    background: var(--glass-highlight);
+    color: var(--text-primary);
+}

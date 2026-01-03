@@ -5,9 +5,12 @@ Converts Chub card JSON files to Reverie character format.
 """
 
 import json
+import logging
 import os
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ChubImporter:
@@ -210,7 +213,7 @@ class ChubImporter:
                 # Add the rules
                 char_data["system_prompt"] = system_prompt + self.ROLEPLAY_RULES
                 updated += 1
-                print(f"[ChubImporter] Added rules to: {name}")
+                logger.info(f"Added rules to: {name}")
         
         if updated > 0:
             with open(self.IMPORTED_FILE, 'w', encoding='utf-8') as f:

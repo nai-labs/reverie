@@ -330,12 +330,23 @@ function addImage(url, prompt) {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot';
     const imageId = `image-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Escape single quotes in URL and prompt for onclick handlers
+    const escapedUrl = url.replace(/'/g, "\\'");
+    const escapedPrompt = (prompt || '').replace(/'/g, "\\'");
     msgDiv.innerHTML = `
         <div class="content">
-            <img id="${imageId}" src="${url}" alt="${prompt}" onclick="window.open('${url}', '_blank')">
-            <button class="add-to-story-btn" onclick="addToSceneQueue('${url}', 'image', '${imageId}', this, 'image')">
-                ➕ Add to Story
-            </button>
+            <img id="${imageId}" src="${url}" alt="${prompt || ''}" onclick="window.open('${escapedUrl}', '_blank')">
+            <div class="image-actions">
+                <button class="add-to-story-btn" onclick="addToSceneQueue('${escapedUrl}', 'image', '${imageId}', this, 'image')">
+                    ➕ Story
+                </button>
+                <button class="edit-image-btn" onclick="openEditModal('${escapedUrl}')">
+                    ✏️ Edit
+                </button>
+                <button class="faceswap-btn" onclick="applyFaceswap('${escapedUrl}', this)">
+                    🔄 Face
+                </button>
+            </div>
         </div>
     `;
     messagesDiv.appendChild(msgDiv);
@@ -1535,6 +1546,121 @@ if (exportBtn) {
         }
     });
 }
+
+// ============ IMAGE EDIT & FACESWAP ============
+let currentEditImageUrl = null;
+
+const imageEditModal = document.getElementById('image-edit-modal');
+const editPreviewImage = document.getElementById('edit-preview-image');
+const editPromptInput = document.getElementById('edit-prompt-input');
+const submitEditBtn = document.getElementById('submit-edit-btn');
+const closeEditBtn = document.getElementById('close-edit-btn');
+
+function openEditModal(imageUrl) {
+    currentEditImageUrl = imageUrl;
+    if (editPreviewImage) {
+        editPreviewImage.src = imageUrl;
+    }
+    if (editPromptInput) {
+        editPromptInput.value = '';
+    }
+    if (imageEditModal) {
+        imageEditModal.classList.remove('hidden');
+    }
+}
+
+async function submitImageEdit() {
+    const prompt = editPromptInput?.value.trim();
+    if (!prompt) {
+        alert('Please enter an edit instruction.');
+        return;
+    }
+
+    if (!currentEditImageUrl) {
+        alert('No image selected for editing.');
+        return;
+    }
+
+    // Close modal and show loading
+    if (imageEditModal) imageEditModal.classList.add('hidden');
+    addSystemMessage(`Editing image: "${prompt.substring(0, 50)}..."...`);
+
+    try {
+        const response = await fetch(`${API_BASE}/edit/image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image_url: currentEditImageUrl,
+                prompt: prompt
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Image edit failed');
+        }
+
+        const data = await response.json();
+        addImage(data.image_url, `Edited: ${prompt}`);
+        addSystemMessage('Image edited successfully!');
+    } catch (error) {
+        console.error('Image edit failed:', error);
+        addSystemMessage(`Failed to edit image: ${error.message}`);
+    }
+}
+
+async function applyFaceswap(imageUrl, btn) {
+    // Disable button and show loading state
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳...';
+    }
+
+    addSystemMessage('Applying face swap...');
+
+    try {
+        const response = await fetch(`${API_BASE}/faceswap`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                image_url: imageUrl
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Face swap failed');
+        }
+
+        const data = await response.json();
+        addImage(data.image_url, 'Face swapped');
+        addSystemMessage('Face swap applied successfully!');
+    } catch (error) {
+        console.error('Face swap failed:', error);
+        addSystemMessage(`Failed to apply face swap: ${error.message}`);
+    } finally {
+        // Restore button
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '🔄 Face';
+        }
+    }
+}
+
+// Image edit modal event listeners
+if (submitEditBtn) submitEditBtn.addEventListener('click', submitImageEdit);
+if (closeEditBtn) closeEditBtn.addEventListener('click', () => {
+    if (imageEditModal) imageEditModal.classList.add('hidden');
+});
+if (editPromptInput) {
+    editPromptInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            submitImageEdit();
+        }
+    });
+}
+// ============ END IMAGE EDIT & FACESWAP ============
 
 // Start
 document.addEventListener('DOMContentLoaded', init);

@@ -68,7 +68,6 @@ class APIManager:
                 # Currently assuming media LLM is always OpenRouter, but structure allows expansion
                 if media_provider == "openrouter":
                     self.media_llm_provider = media_provider
-                    # TODO: Validate if media_model is actually an OpenRouter model?
                     self.media_llm_model = media_model
                 else:
                     logger.warning(f"Invalid media provider '{media_provider}' in llm_settings. Using default '{self.media_llm_provider}'.")

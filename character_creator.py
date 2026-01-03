@@ -5,11 +5,14 @@ Creates new characters with LLM-generated prompts and image generation.
 """
 
 import json
+import logging
 import os
 import shutil
 from typing import Optional, Tuple
 import aiohttp
 import asyncio
+
+logger = logging.getLogger(__name__)
 
 
 class CharacterCreator:
@@ -217,7 +220,7 @@ Format your response EXACTLY like this:
             
             return ref_folder
         except Exception as e:
-            print(f"Error creating reference folder: {e}")
+            logger.error(f"Error creating reference folder: {e}")
             return None
     
     def delete_character(self, name: str) -> bool:

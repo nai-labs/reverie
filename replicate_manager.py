@@ -767,3 +767,113 @@ class ReplicateManager:
         except Exception as e:
             logger.error(f"Error in generate_pixverse_lipsync: {e}", exc_info=True)
             return None
+
+    async def generate_qwen_image(self, prompt: str, aspect_ratio: str = "3:4") -> str | None:
+        """Generate image using Qwen Image 2512 model via Replicate.
+        
+        Args:
+            prompt: Text prompt for image generation
+            aspect_ratio: Aspect ratio (default "3:4" for portrait)
+            
+        Returns:
+            URL to generated image, or None if failed
+        """
+        logger.info(f"[Qwen Image 2512] Generating image with prompt: {prompt[:100]}...")
+        
+        try:
+            input_data = {
+                "prompt": prompt,
+                "aspect_ratio": aspect_ratio,
+                "go_fast": True,
+                "guidance": 4,
+                "num_inference_steps": 40,
+                "output_format": "webp",
+                "output_quality": 95,
+                "negative_prompt": "",
+                "disable_safety_checker": True
+            }
+            
+            output = await asyncio.to_thread(
+                self.replicate_client.run,
+                "qwen/qwen-image-2512",
+                input=input_data
+            )
+            
+            logger.info(f"[Qwen Image 2512] Generation successful. Output type: {type(output)}")
+            
+            # Handle different output types from Replicate
+            # Can be: list of FileOutput objects, list of URLs, or single value
+            if isinstance(output, list) and len(output) > 0:
+                item = output[0]
+                # FileOutput has a .url attribute or can be converted to string
+                if hasattr(item, 'url'):
+                    return str(item.url)
+                else:
+                    return str(item)
+            elif output:
+                if hasattr(output, 'url'):
+                    return str(output.url)
+                return str(output)
+            return None
+            
+        except replicate.exceptions.ReplicateError as e:
+            logger.error(f"[Qwen Image 2512] Replicate API error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[Qwen Image 2512] Error: {e}", exc_info=True)
+            return None
+
+    async def edit_image(self, image_url: str, prompt: str, aspect_ratio: str = "match_input_image") -> str | None:
+        """Edit an image using Qwen Image Edit 2511 model via Replicate.
+        
+        Args:
+            image_url: URL to the image to edit (must be publicly accessible)
+            prompt: Text instruction describing the edit to make
+            aspect_ratio: Aspect ratio for output (default "match_input_image")
+            
+        Returns:
+            URL to edited image, or None if failed
+        """
+        logger.info(f"[Qwen Image Edit] Editing image with prompt: {prompt[:100]}...")
+        
+        try:
+            input_data = {
+                "image": [image_url],  # Model expects array of image URLs
+                "prompt": prompt,
+                "aspect_ratio": aspect_ratio,
+                "go_fast": True,
+                "output_format": "webp",
+                "output_quality": 95,
+                "disable_safety_checker": True
+            }
+            
+            output = await asyncio.to_thread(
+                self.replicate_client.run,
+                "qwen/qwen-image-edit-2511",
+                input=input_data
+            )
+            
+            logger.info(f"[Qwen Image Edit] Edit successful. Output type: {type(output)}")
+            
+            # Handle different output types from Replicate
+            # Can be: list of FileOutput objects, list of URLs, or single value
+            if isinstance(output, list) and len(output) > 0:
+                item = output[0]
+                # FileOutput has a .url attribute or can be converted to string
+                if hasattr(item, 'url'):
+                    return str(item.url)
+                else:
+                    return str(item)
+            elif output:
+                if hasattr(output, 'url'):
+                    return str(output.url)
+                return str(output)
+            return None
+            
+        except replicate.exceptions.ReplicateError as e:
+            logger.error(f"[Qwen Image Edit] Replicate API error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"[Qwen Image Edit] Error: {e}", exc_info=True)
+            return None
+

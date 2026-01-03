@@ -17,12 +17,16 @@ A powerful, standalone local AI roleplay platform that brings your characters to
 *   **Real-Time TTS**: Integrated ElevenLabs Text-to-Speech with auto-play and voice direction.
 *   **Script TTS**: Generate TTS from custom scripts, bypassing conversation context.
 *   **Multimedia Generation**:
-    *   **Selfies**: Generate context-aware images with 11 SD model options (Z-Image Turbo, XL Lustify, EpicRealism, Juggernaut, and more).
+    *   **Selfies**: Generate context-aware images with 12 model options including local SD models (Z-Image Turbo, XL Lustify, EpicRealism, Juggernaut, and more) plus cloud-based Qwen Image 2512 via Replicate.
+    *   **Image Editing**: Edit any generated image with natural language instructions using Qwen Image Edit 2511 (e.g., "make her shirt red", "add sunset lighting").
     *   **Videos**: Create short video clips using Replicate or Wavespeed (WAN S2V, InfiniteTalk, Hunyuan Avatar).
     *   **LoRA Videos**: Generate videos with custom LoRA styles using WAN 2.1/2.2 models.
-    *   **Lipsync**: Apply lipsync to videos using VEED or Kling models.
+    *   **Lipsync**: Apply lipsync to videos using VEED or Pixverse models.
 *   **Story Queue**: Mark images/videos for export, compile into a single concatenated video with FFmpeg.
-*   **Face Swap Consistency**: When using "Use Last Frame" on videos, ReActor face swap is automatically applied for consistent character faces across clips.
+*   **Face Swap**: ReActor-powered face swap with multiple options:
+    *   Automatic face swap on all generated images (unless First-Person mode is on).
+    *   "Use Last Frame" on videos automatically applies face swap.
+    *   Per-image 🔄 Face button for on-demand face swapping.
 *   **Session Resume**: Save and resume chat sessions, preserving conversation history and generated media.
 *   **Export Sessions**: Download full sessions as ZIP files with all media and history.
 *   **Remote Access**: Securely access your session from other devices on your local network with password protection.

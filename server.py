@@ -382,6 +382,10 @@ async def generate_image(model: str = "z-image-turbo"):
     if not state.image_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
     
+    # Check if cloud model (Qwen)
+    if model == "qwen-image-2512":
+        return await generate_image_qwen()
+    
     # Map model value to checkpoint filename
     # Model value format: lowercase-with-dashes from frontend
     MODEL_VALUE_MAP = {
@@ -428,6 +432,72 @@ async def generate_image(model: str = "z-image-turbo"):
     state.conversation_manager.set_last_selfie_path(image_path)
     
     relative_path = os.path.relpath(image_path, start=os.getcwd())
+    relative_path = relative_path.replace("\\", "/")
+    
+    return {
+        "image_url": f"/{relative_path}",
+        "prompt": prompt
+    }
+
+async def generate_image_qwen():
+    """Generate image using Qwen Image 2512 (cloud model via Replicate)."""
+    if not state.replicate_manager:
+        raise HTTPException(status_code=400, detail="Replicate manager not initialized")
+    
+    logger.info("[Qwen Image Gen] Starting cloud image generation...")
+    
+    # 1. Generate Prompt (same as local SD)
+    conversation = state.conversation_manager.get_conversation()
+    
+    char_settings = characters.get(state.character_name, {})
+    pov_mode = char_settings.get("pov_mode", False)
+    first_person_mode = char_settings.get("first_person_mode", False)
+    
+    prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode, first_person_mode=first_person_mode)
+    
+    if not prompt:
+        raise HTTPException(status_code=500, detail="Failed to generate image prompt")
+    
+    logger.info(f"[Qwen Image Gen] Prompt: {prompt[:100]}...")
+    
+    # 2. Generate Image via Replicate
+    image_url = await state.replicate_manager.generate_qwen_image(prompt, aspect_ratio="3:4")
+    
+    if not image_url:
+        raise HTTPException(status_code=500, detail="Failed to generate image with Qwen")
+    
+    # 3. Download and save image
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(image_url) as resp:
+            if resp.status == 200:
+                image_data = await resp.read()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                image_filename = f"qwen_image_{timestamp}.webp"
+                image_path = os.path.join(state.conversation_manager.subfolder_path, image_filename)
+                
+                with open(image_path, "wb") as f:
+                    f.write(image_data)
+                    
+                logger.info(f"[Qwen Image Gen] Saved to: {image_path}")
+            else:
+                raise HTTPException(status_code=500, detail="Failed to download generated image")
+    
+    # 4. Apply face swap (unless first_person_mode is enabled)
+    final_path = image_path
+    if not first_person_mode and state.image_manager:
+        logger.info("[Qwen Image Gen] Applying face swap...")
+        faceswap_path = await state.image_manager.apply_faceswap(image_path)
+        if faceswap_path:
+            final_path = faceswap_path
+            logger.info(f"[Qwen Image Gen] Face swap applied: {final_path}")
+        else:
+            logger.warning("[Qwen Image Gen] Face swap failed, using original image")
+    
+    # Update conversation manager
+    state.conversation_manager.set_last_selfie_path(final_path)
+    
+    relative_path = os.path.relpath(final_path, start=os.getcwd())
     relative_path = relative_path.replace("\\", "/")
     
     return {
@@ -1276,6 +1346,107 @@ async def update_settings(settings: SettingsRequest):
         raise HTTPException(status_code=500, detail="Failed to save settings to file")
         
     return {"status": "updated"}
+
+class EditImageRequest(BaseModel):
+    image_url: str  # Relative URL like /conversations/.../image.png
+    prompt: str     # Edit instruction
+
+@app.post("/api/edit/image")
+async def edit_image(request: EditImageRequest):
+    """Edit an image using Qwen Image Edit 2511 via Replicate."""
+    if not state.replicate_manager:
+        raise HTTPException(status_code=400, detail="Replicate manager not initialized")
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    logger.info(f"[Image Edit] Editing image: {request.image_url} with prompt: {request.prompt[:50]}...")
+    
+    # Convert relative URL to absolute file path
+    relative_path = request.image_url.lstrip('/')
+    absolute_path = os.path.join(os.getcwd(), relative_path)
+    
+    if not os.path.exists(absolute_path):
+        raise HTTPException(status_code=400, detail=f"Image not found: {request.image_url}")
+    
+    # For Replicate, we need a publicly accessible URL
+    # Upload the image to Replicate first using base64 data URI
+    import base64
+    with open(absolute_path, "rb") as f:
+        image_data = base64.b64encode(f.read()).decode('utf-8')
+    
+    # Determine mime type from extension
+    ext = os.path.splitext(absolute_path)[1].lower()
+    mime_types = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp'}
+    mime_type = mime_types.get(ext, 'image/png')
+    
+    # Create data URI for the image
+    image_data_uri = f"data:{mime_type};base64,{image_data}"
+    
+    # Call the edit method
+    edited_url = await state.replicate_manager.edit_image(image_data_uri, request.prompt)
+    
+    if not edited_url:
+        raise HTTPException(status_code=500, detail="Failed to edit image")
+    
+    # Download the edited image
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(edited_url) as resp:
+            if resp.status == 200:
+                edited_data = await resp.read()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                edited_filename = f"edited_image_{timestamp}.webp"
+                edited_path = os.path.join(state.conversation_manager.subfolder_path, edited_filename)
+                
+                with open(edited_path, "wb") as f:
+                    f.write(edited_data)
+                    
+                logger.info(f"[Image Edit] Saved edited image to: {edited_path}")
+            else:
+                raise HTTPException(status_code=500, detail="Failed to download edited image")
+    
+    result_relative = os.path.relpath(edited_path, start=os.getcwd())
+    result_relative = result_relative.replace("\\", "/")
+    
+    return {
+        "image_url": f"/{result_relative}",
+        "prompt": request.prompt
+    }
+
+class FaceswapRequest(BaseModel):
+    image_url: str  # Relative URL like /conversations/.../image.png
+
+@app.post("/api/faceswap")
+async def faceswap_image(request: FaceswapRequest):
+    """Apply face swap to any image using ReActor via local SD."""
+    if not state.image_manager:
+        raise HTTPException(status_code=400, detail="Image manager not initialized")
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    logger.info(f"[Faceswap] Processing image: {request.image_url}")
+    
+    # Convert relative URL to absolute file path
+    relative_path = request.image_url.lstrip('/')
+    absolute_path = os.path.join(os.getcwd(), relative_path)
+    
+    if not os.path.exists(absolute_path):
+        raise HTTPException(status_code=400, detail=f"Image not found: {request.image_url}")
+    
+    # Apply face swap using existing image manager method
+    faceswap_path = await state.image_manager.apply_faceswap(absolute_path)
+    
+    if not faceswap_path:
+        raise HTTPException(status_code=500, detail="Face swap failed")
+    
+    logger.info(f"[Faceswap] Success! Saved to: {faceswap_path}")
+    
+    result_relative = os.path.relpath(faceswap_path, start=os.getcwd())
+    result_relative = result_relative.replace("\\", "/")
+    
+    return {
+        "image_url": f"/{result_relative}"
+    }
 
 @app.get("/health")
 async def health_check():

@@ -45,9 +45,6 @@ OPENROUTER_MODELS = {
     "google/gemini-3-flash-preview": "gemini3",
     "deepseek/deepseek-r1-0528-qwen3-8b": "R1qwen3",
     "anthropic/claude-sonnet-4.5": "sonnet4.5",
-   
-   
-   
 }
 OPENROUTER_MODEL = "x-ai/grok-4.1-fast"
 OPENROUTER_MAX_TOKENS = 1024
