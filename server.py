@@ -538,6 +538,7 @@ async def generate_image_qwen():
     
     # Update conversation manager
     state.conversation_manager.set_last_selfie_path(final_path)
+    logger.info(f"[Qwen Image Gen] Set last_selfie_path to: {final_path}")
     
     relative_path = os.path.relpath(final_path, start=os.getcwd())
     relative_path = relative_path.replace("\\", "/")
@@ -623,6 +624,7 @@ async def generate_image_direct_qwen():
     
     # Update conversation manager
     state.conversation_manager.set_last_selfie_path(final_path)
+    logger.info(f"[Qwen Direct Image] Set last_selfie_path to: {final_path}")
     
     relative_path = os.path.relpath(final_path, start=os.getcwd())
     relative_path = relative_path.replace("\\", "/")
@@ -858,6 +860,7 @@ async def generate_video_lora(request: LoraVideoRequest):
     
     # 1. Get image - either the preview (last generated) or last selfie
     image_path = state.conversation_manager.get_last_selfie_path()
+    logger.info(f"[WAN Video] Retrieved last_selfie_path: {image_path}, exists: {os.path.exists(image_path) if image_path else 'N/A'}")
     if not image_path or not os.path.exists(image_path):
         raise HTTPException(status_code=400, detail="No recent image found. Please generate an image first.")
     
