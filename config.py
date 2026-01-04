@@ -96,6 +96,7 @@ ELEVENLABS_OUTPUT_FORMAT = 'mp3_44100_192'
 # Stable Diffusion API configuration
 STABLE_DIFFUSION_URL = os.getenv('STABLE_DIFFUSION_URL', 'http://127.0.0.1:7860/sdapi/v1/txt2img')
 INSIGHTFACE_MODEL_PATH = os.getenv("INSIGHTFACE_MODEL_PATH", './models/insightface/inswapper_128.onnx')
+SD_CHECKPOINTS_FOLDER = os.getenv('SD_CHECKPOINTS_FOLDER', 'C:/AI/ForgeUI/models/Stable-diffusion')
 
 # Replicate API configuration
 REPLICATE_API_TOKEN = os.getenv('REPLICATE_API_TOKEN')

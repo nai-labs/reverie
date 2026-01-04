@@ -26,7 +26,8 @@ from config import (
     COMMAND_PREFIX,
     characters,
     USE_NGROK,
-    NGROK_AUTH_TOKEN
+    NGROK_AUTH_TOKEN,
+    SD_CHECKPOINTS_FOLDER
 )
 
 # Setup logging
@@ -376,6 +377,54 @@ async def generate_script_tts(request: ScriptTTSRequest):
         logger.error(f"Script TTS generation failed: {e}")
         raise HTTPException(status_code=500, detail=f"Script TTS failed: {e}")
 
+@app.get("/api/image-models")
+async def get_image_models():
+    """Scan SD checkpoints folder and return available models for dropdown."""
+    import glob
+    
+    models = []
+    
+    # Scan for .safetensors and .gguf files in the checkpoints folder
+    if os.path.exists(SD_CHECKPOINTS_FOLDER):
+        # Support multiple model file extensions
+        extensions = ["*.safetensors", "*.gguf"]
+        for ext in extensions:
+            pattern = os.path.join(SD_CHECKPOINTS_FOLDER, ext)
+            for filepath in glob.glob(pattern):
+                filename = os.path.basename(filepath)
+                # Remove extension to get model name
+                name_without_ext = filename.rsplit('.', 1)[0]
+                
+                # Determine mode from filename prefix
+                # zImage*, z_image*, z-image* (any casing) → lumina mode
+                name_lower = name_without_ext.lower()
+                if name_lower.startswith('zimage') or name_lower.startswith('z_image') or name_lower.startswith('z-image'):
+                    mode = 'lumina'
+                else:
+                    mode = 'xl'
+                
+                models.append({
+                    "value": filename,  # Use full filename with extension as value
+                    "label": name_without_ext,  # Display name without extension
+                    "mode": mode,
+                    "filename": filename
+                })
+        
+        # Sort alphabetically, but put z-image models first
+        models.sort(key=lambda x: (0 if x['mode'] == 'lumina' else 1, x['label'].lower()))
+    else:
+        logger.warning(f"SD checkpoints folder not found: {SD_CHECKPOINTS_FOLDER}")
+    
+    # Add Qwen cloud option at the end
+    models.append({
+        "value": "qwen-image-2512",
+        "label": "☁️ Qwen 2512 (Cloud)",
+        "mode": "cloud",
+        "filename": None
+    })
+    
+    return {"models": models}
+
 @app.post("/api/generate/image")
 async def generate_image(model: str = "z-image-turbo"):
     """Generate image with specified model."""
@@ -386,23 +435,16 @@ async def generate_image(model: str = "z-image-turbo"):
     if model == "qwen-image-2512":
         return await generate_image_qwen()
     
-    # Map model value to checkpoint filename
-    # Model value format: lowercase-with-dashes from frontend
-    MODEL_VALUE_MAP = {
-        "z-image-turbo": ("lumina", None),
-        "xl-lustify": ("xl", "lustifySDXLNSFW_ggwpV7.safetensors"),
-        "xl-epicrealism": ("xl", "epicrealismXL_vxviiCrystalclear.safetensors"),
-        "biglove-insta": ("xl", "bigLove_insta1.safetensors"),
-        "mohawk-v20": ("xl", "MOHAWK_v20.safetensors"),
-        "colossus-xl": ("xl", "colossusProjectXLSFW_12cExperimental3.safetensors"),
-        "juggernaut-xl": ("xl", "juggernautXL_v8Rundiffusion.safetensors"),
-        "pikon-realism": ("xl", "pikonRealism_v2.safetensors"),
-        "realistic-stock": ("xl", "realisticStockPhoto_v20.safetensors"),
-        "unstable-illusion": ("xl", "unstableIllusion_sdxxl.safetensors"),
-        "unstable-illusion-v2": ("xl", "unstableIllusion_sdxxxlV2.safetensors"),
-    }
+    # Dynamic model detection based on filename prefix
+    # zImage*, z_image*, z-image* (any casing) → lumina mode, all else → xl mode
+    model_lower = model.lower()
+    if model_lower.startswith("zimage") or model_lower.startswith("z_image") or model_lower.startswith("z-image"):
+        sd_mode = "lumina"
+    else:
+        sd_mode = "xl"
     
-    sd_mode, sd_checkpoint = MODEL_VALUE_MAP.get(model, ("lumina", None))
+    # Model value is already the full filename with extension from the dropdown
+    sd_checkpoint = model
     
     logger.info(f"[Image Gen] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}")
     
@@ -505,28 +547,111 @@ async def generate_image_qwen():
         "prompt": prompt
     }
 
+async def generate_image_direct_qwen():
+    """Generate image using Qwen cloud model with prompt extracted from last bot message's delimited text."""
+    if not state.replicate_manager:
+        raise HTTPException(status_code=400, detail="Replicate manager not initialized")
+    
+    logger.info("[Qwen Direct Image] Starting cloud image generation...")
+    
+    # 1. Get the last bot message
+    conversation = state.conversation_manager.get_conversation()
+    bot_messages = [msg["content"] for msg in conversation if msg["role"] == "assistant"]
+    
+    if not bot_messages:
+        raise HTTPException(status_code=400, detail="No bot messages found to extract prompt from")
+    
+    last_message = bot_messages[-1]
+    
+    # 2. Extract delimited text from the end of the message
+    prompt = None
+    
+    pipe_match = re.search(r'[*_~]*\|([^|]+)\|[*_~]*\s*$', last_message)
+    if pipe_match:
+        prompt = pipe_match.group(1).strip()
+    else:
+        bracket_match = re.search(r'[*_~]*\[([^\]]+)\][*_~]*\s*$', last_message)
+        if bracket_match:
+            prompt = bracket_match.group(1).strip()
+    
+    if not prompt:
+        raise HTTPException(status_code=400, detail="No delimited prompt found in the last message. Expected text between | | or [ ] at the end.")
+    
+    logger.info(f"[Qwen Direct Image] Extracted prompt: {prompt[:100]}...")
+    
+    # 3. Prepend character's image_prompt for consistent appearance
+    char_settings = characters.get(state.character_name, {})
+    first_person_mode = char_settings.get("first_person_mode", False)
+    image_prompt = char_settings.get("image_prompt", "")
+    if image_prompt:
+        prompt = f"{image_prompt}, {prompt}"
+        logger.info(f"[Qwen Direct Image] Combined prompt: {prompt[:100]}...")
+    
+    # 4. Generate Image via Replicate Qwen
+    image_url = await state.replicate_manager.generate_qwen_image(prompt, aspect_ratio="3:4")
+    
+    if not image_url:
+        raise HTTPException(status_code=500, detail="Failed to generate image with Qwen")
+    
+    # 5. Download and save image
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(image_url) as resp:
+            if resp.status == 200:
+                image_data = await resp.read()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                image_filename = f"qwen_direct_{timestamp}.webp"
+                image_path = os.path.join(state.conversation_manager.subfolder_path, image_filename)
+                
+                with open(image_path, "wb") as f:
+                    f.write(image_data)
+                    
+                logger.info(f"[Qwen Direct Image] Saved to: {image_path}")
+            else:
+                raise HTTPException(status_code=500, detail="Failed to download generated image")
+    
+    # 6. Apply face swap (unless first_person_mode is enabled)
+    final_path = image_path
+    if not first_person_mode and state.image_manager:
+        logger.info("[Qwen Direct Image] Applying face swap...")
+        faceswap_path = await state.image_manager.apply_faceswap(image_path)
+        if faceswap_path:
+            final_path = faceswap_path
+            logger.info(f"[Qwen Direct Image] Face swap applied: {final_path}")
+        else:
+            logger.warning("[Qwen Direct Image] Face swap failed, using original image")
+    
+    # Update conversation manager
+    state.conversation_manager.set_last_selfie_path(final_path)
+    
+    relative_path = os.path.relpath(final_path, start=os.getcwd())
+    relative_path = relative_path.replace("\\", "/")
+    
+    return {
+        "image_url": f"/{relative_path}",
+        "prompt": prompt
+    }
+
 @app.post("/api/generate/image/direct")
 async def generate_image_direct(model: str = "z-image-turbo"):
     """Generate image using prompt extracted directly from the last bot message's delimited text."""
     if not state.image_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
     
-    # Map model value to checkpoint filename
-    MODEL_VALUE_MAP = {
-        "z-image-turbo": ("lumina", None),
-        "xl-lustify": ("xl", "lustifySDXLNSFW_ggwpV7.safetensors"),
-        "xl-epicrealism": ("xl", "epicrealismXL_vxviiCrystalclear.safetensors"),
-        "biglove-insta": ("xl", "bigLove_insta1.safetensors"),
-        "mohawk-v20": ("xl", "MOHAWK_v20.safetensors"),
-        "colossus-xl": ("xl", "colossusProjectXLSFW_12cExperimental3.safetensors"),
-        "juggernaut-xl": ("xl", "juggernautXL_v8Rundiffusion.safetensors"),
-        "pikon-realism": ("xl", "pikonRealism_v2.safetensors"),
-        "realistic-stock": ("xl", "realisticStockPhoto_v20.safetensors"),
-        "unstable-illusion": ("xl", "unstableIllusion_sdxxl.safetensors"),
-        "unstable-illusion-v2": ("xl", "unstableIllusion_sdxxxlV2.safetensors"),
-    }
+    # Check if cloud model (Qwen)
+    if model == "qwen-image-2512":
+        return await generate_image_direct_qwen()
     
-    sd_mode, sd_checkpoint = MODEL_VALUE_MAP.get(model, ("lumina", None))
+    # Dynamic model detection based on filename prefix
+    # zImage*, z_image*, z-image* (any casing) → lumina mode, all else → xl mode
+    model_lower = model.lower()
+    if model_lower.startswith("zimage") or model_lower.startswith("z_image") or model_lower.startswith("z-image"):
+        sd_mode = "lumina"
+    else:
+        sd_mode = "xl"
+    
+    # Always pass the checkpoint filename (model value is already full filename with extension)
+    sd_checkpoint = model
     
     logger.info(f"[Direct Image] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}")
     

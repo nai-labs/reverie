@@ -67,6 +67,9 @@ const submitPasswordBtn = document.getElementById('submit-password-btn');
 // Initialization
 async function init() {
     try {
+        // Load image models dropdown
+        await loadImageModels();
+
         // Check if we have URL params (Launcher)
         const urlParams = new URLSearchParams(window.location.search);
         const paramUser = urlParams.get('user');
@@ -115,6 +118,35 @@ async function init() {
     if (sceneQueue.length > 0) {
         renderSceneQueue();
         showSceneQueuePanel();
+    }
+}
+
+// Load available image models from SD checkpoints folder
+async function loadImageModels() {
+    const select = document.getElementById('image-model-select');
+    if (!select) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/image-models`);
+        if (!response.ok) throw new Error('Failed to fetch image models');
+
+        const data = await response.json();
+        select.innerHTML = '';
+
+        if (data.models && data.models.length > 0) {
+            data.models.forEach((model, index) => {
+                const option = document.createElement('option');
+                option.value = model.value;
+                option.textContent = model.label;
+                if (index === 0) option.selected = true;
+                select.appendChild(option);
+            });
+        } else {
+            select.innerHTML = '<option value="">No models found</option>';
+        }
+    } catch (error) {
+        console.error('Failed to load image models:', error);
+        select.innerHTML = '<option value="">Error loading models</option>';
     }
 }
 

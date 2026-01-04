@@ -197,7 +197,9 @@ class ImageManager:
         # Build payload based on SD mode
         logger.info(f"[Image Gen] sd_mode='{sd_mode}', sd_checkpoint='{sd_checkpoint}'")
         if sd_mode == "lumina":
-            # Lumina mode: different model, VAE, sampler, scheduler, steps, CFG, and shift
+            # Lumina mode: uses Lumina VAE, sampler, scheduler, steps, CFG
+            # But use the passed checkpoint (or fall back to default LUMINA_SD_MODEL)
+            lumina_model = sd_checkpoint if sd_checkpoint else LUMINA_SD_MODEL
             payload = {
                 "prompt": prompt,
                 "steps": LUMINA_STEPS,
@@ -209,7 +211,7 @@ class ImageManager:
                 "cfg_scale": LUMINA_CFG_SCALE,
                 "alwayson_scripts": {"reactor": {"args": reactor_args}},
                 "override_settings": {
-                    "sd_model_checkpoint": LUMINA_SD_MODEL,
+                    "sd_model_checkpoint": lumina_model,
                     "sd_vae": LUMINA_VAE,
                     "forge_additional_modules": [
                         f"C:\\AI\\ForgeUI\\models\\VAE\\{LUMINA_VAE}",
@@ -217,7 +219,7 @@ class ImageManager:
                     ]
                 }
             }
-            logger.info(f"Using Lumina mode for image generation")
+            logger.info(f"Using Lumina mode with model: {lumina_model}")
         else:
             # XL mode: use provided checkpoint or default
             xl_model = sd_checkpoint if sd_checkpoint else DEFAULT_SD_MODEL
