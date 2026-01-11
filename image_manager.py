@@ -37,7 +37,7 @@ class ImageManager:
         self.image_prompt = characters[character_name]["image_prompt"]
         self.source_faces_folder = characters[character_name]["source_faces_folder"]
 
-    async def generate_selfie_prompt(self, conversation, pov_mode=False, first_person_mode=False):
+    async def generate_selfie_prompt(self, conversation, pov_mode=False, first_person_mode=False, spycam_mode=False):
         ethnicity_match = re.search(r'\b(?:\d+(?:-year-old)?[\s-]?)?(?:asian|lebanese|black|african|caucasian|white|hispanic|latino|latina|mexican|european|middle eastern|indian|native american|pacific islander|mixed race|biracial|multiracial|[^\s]+?(?=\s+(?:girl|woman|lady|female|man|guy|male|dude)))\b', self.image_prompt, re.IGNORECASE)
         if ethnicity_match:
             ethnicity = ethnicity_match.group()
@@ -116,21 +116,47 @@ class ImageManager:
 
                 ALWAYS indicate what she's wearing in the photo, top and bottom, and where she is based on context.
                 ALWAYS prioritize the latter part of the context to describe her body position and what she's doing. use the earlier context mostly for deducing the setting."""
+            elif spycam_mode:
+                # Spycam Mode - Surveillance camera style
+                context += """
+                The prompt should follow this surveillance camera format:
+
+                A grainy, 1024p [camera type] view of [location], captured from a [camera angle]. The subject is a [character description: body type, COLOR of top, COLOR of bottom, shoes/barefoot, position/action]. CCTV security camera footage. [lighting]. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "[contextual date/time]" in blocky white font.
+
+                CAMERA TYPE SELECTION (pick the most appropriate based on location):
+                - Bedroom/living room/home interior → nanny cam, corner security camera
+                - Front door/porch/entrance → RING doorbell camera
+                - Night/dark scene → infrared night vision camera
+                - Store/retail/mall → ceiling security camera
+                - Office/hallway/elevator → overhead security camera
+                - Parking lot/ATM/outdoor → pole-mounted security camera
+
+                <EXAMPLES>
+                A grainy, 1024p RING doorbell camera view of a front porch at night, captured from a high wall-mounted angle. The subject is a young woman with dark hair wearing a white tank top and grey shorts, barefoot, standing at the door looking back over her shoulder. CCTV security camera footage. Dim porch light illumination. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "2025-11-28 23:17" in blocky white font.
+
+                A grainy, 1024p infrared security camera view of a dark bedroom, captured from a high corner angle. The subject is a woman in light blue pajama top and matching shorts sitting on the edge of the bed looking at her phone. CCTV security camera footage. Infrared night vision glow. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "2025-11-29 02:34" in blocky white font.
+
+                A grainy, 1024p ceiling security camera view of an office hallway, captured from an overhead angle. The subject is a woman with her hair in a bun wearing a beige unbuttoned blouse and grey pencil skirt, black heels, walking toward the elevator. CCTV security camera footage. Harsh fluorescent lighting. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "2025-11-28 18:42" in blocky white font.
+
+                ONLY generate the prompt itself, avoid narrating or commenting.
+                ALWAYS include the COLOR of clothing items (top color, bottom color).
+                ALWAYS indicate what she's wearing (top, bottom, footwear/barefoot) based on context.
+                Generate a realistic timestamp based on the scene context (time of day, situation)."""
             else:
                 # Default Selfie Mode
                 context += """
                 The prompt should follow this format (change <these parts> to suit the context of the conversation and how the character looks in a photo now):
 
-                handheld amateur phone photo, pov shot of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'wearing a bikini and lying on a bed with her arms stretched out'>, <describe the place, e.g. 'in a messy bedroom'>, looking at viewer
+                pov shot of <describe the character, e.g. 'a 20-year-old asian girl'> <describe what they're wearing and what they're doing', e.g. 'wearing a bikini and lying on a bed with her arms stretched out'>, <describe the place, e.g. 'in a messy bedroom'>, looking at viewer
 
                 MAKE SURE to extract where she is from the text, and include that background in the webcam photo prompt, AND ALSO describe what she's doing according to the text.
 
                 <EXAMPLES>
-                handheld amateur phone photo, pov shot of a young american girl wearing a hoodie and glasses under the covers, looking up at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
+                pov shot of a young american girl wearing a hoodie and glasses under the covers, looking up at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
 
-                handheld amateur phone photo, pov shot of a young asian girl wearing a a suit and pencil skirt while holding a pen and bending over in front of the bathroom mirror, looking at viewer, grainy, candid, gritty, blurry, low quality, flash photography
+                pov shot of a young asian girl wearing a a suit and pencil skirt while holding a pen and bending over in front of the bathroom mirror, looking at viewer, grainy, candid, gritty, blurry, low quality, flash photography
 
-                handheld amateur phone photo, pov shot of an asian woman wearing a thong and tank top posing seductively in a dorm room, holding up her hands in surprise, looking at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
+                pov shot of an asian woman wearing a thong and tank top posing seductively in a dorm room, holding up her hands in surprise, looking at viewer, dark room, grainy, candid, gritty, blurry, low quality, flash photography
 
                 ONLY generate the prompt itself, avoid narrating or commenting, just write the short descriptive prompt.
 
@@ -264,11 +290,12 @@ class ImageManager:
         image.save(image_file_path)
         return image_file_path
 
-    async def apply_faceswap(self, image_path: str) -> str:
+    async def apply_faceswap(self, image_path: str, source_folder: str = None) -> str:
         """Apply ReActor face swap to an existing image using img2img with denoising_strength=0.
         
         Args:
             image_path: Path to the source image to face-swap
+            source_folder: Optional custom source folder for faces (defaults to character's folder)
             
         Returns:
             Path to the face-swapped image, or None if failed
@@ -307,7 +334,7 @@ class ImageManager:
             True,  # Face Mask Correction
             2,  # Select Source, 0 - Image, 1 - Face Model, 2 - Source Folder
             "elena.safetensors",  # Filename of the face model
-            self.source_faces_folder,  # The path to the folder containing source faces images
+            source_folder if source_folder else self.source_faces_folder,  # The path to the folder containing source faces images
             None,  # skip it for API
             True,  # Randomly select an image from the path
             True,  # Force Upscale even if no face found
@@ -315,27 +342,21 @@ class ImageManager:
             2,  # Maximum number of faces to detect (0 is unlimited)
         ]
         
-        # img2img payload with proper XL settings but low denoising to preserve original
-        # Need proper model/sampler settings so the output isn't garbage
+        # img2img payload using same settings as generate_image (Lumina mode)
+        # but without sd_model_checkpoint override to use current loaded model
         payload = {
             "init_images": [image_base64],
-            "denoising_strength": 0.1,  # Very low - preserves most of original but runs proper inference
-            "prompt": "photo of a person",  # Simple prompt to avoid dynamic prompts error
-            "negative_prompt": "",
-            "steps": 15,  # Enough steps to run ReActor properly
-            "sampler_name": IMAGE_SAMPLER,  # DPM++ 2M SDE
-            "scheduler": "Karras",
+            "denoising_strength": 0.1,
+            "prompt": "",
+            "steps": LUMINA_STEPS,
+            "sampler_name": LUMINA_SAMPLER,
+            "scheduler": LUMINA_SCHEDULER,
             "width": IMAGE_WIDTH,
             "height": IMAGE_HEIGHT,
             "seed": -1,
-            "cfg_scale": IMAGE_GUIDANCE_SCALE,  # 4
-            "alwayson_scripts": {"reactor": {"args": reactor_args}},
-            "override_settings": {
-                "sd_model_checkpoint": DEFAULT_SD_MODEL,  # Use default XL model
-                "sd_vae": "Automatic",
-                "forge_additional_modules": [],
-                "CLIP_stop_at_last_layers": 2
-            }
+            "cfg_scale": LUMINA_CFG_SCALE,
+            "alwayson_scripts": {"reactor": {"args": reactor_args}}
+            # No override_settings - use current loaded model
         }
         
         img2img_url = STABLE_DIFFUSION_URL.replace("txt2img", "img2img")
@@ -435,7 +456,108 @@ Describe their physical performance as they deliver this."""
             logger.error(f"Exception generating video prompt: {e}", exc_info=True)
             return "A woman is talking expressively"
 
-    async def generate_video_prompt(self, conversation):
+    async def generate_ltx_video_prompt(self, conversation, style_override: str = None):
+        """Generates a detailed scene prompt for LTX-2 video generation with audio.
+        
+        The LLM will analyze the context and automatically choose the best video style:
+        - Cinematic (dramatic, film-like shots)
+        - Security cam / CCTV (surveillance footage aesthetic)
+        - Handheld / Phone video (shaky, candid, intimate)
+        - Webcam / Video call (static, front-facing)
+        - Found footage (documentary, leaked video feel)
+        
+        The prompt includes actual dialogue in quotes for LTX-2 to generate speech.
+        
+        Args:
+            conversation: The conversation history
+            style_override: Optional style to force (cinematic, security, handheld, webcam, found_footage)
+        """
+        
+        # Get only the last assistant message
+        last_assistant_message = None
+        for msg in reversed(conversation):
+            if msg["role"] == "assistant":
+                last_assistant_message = msg["content"]
+                break
+        
+        if not last_assistant_message:
+            logger.info("[LTX Prompt] No assistant message found, using default prompt")
+            return "A woman looks at the camera and says 'Hello there.' Warm lighting, casual atmosphere."
+        
+        logger.info(f"\n[LTX Prompt] Generating from last message:\n{last_assistant_message[:300]}...")
+        
+        # Build the style guidance
+        style_guidance = ""
+        if style_override:
+            style_map = {
+                "cinematic": "Use CINEMATIC style: professional film quality, dramatic angles, smooth camera movement, Hollywood-style lighting.",
+                "security": "Use SECURITY CAMERA style: grainy footage, fixed high-angle camera, timestamp overlay, surveillance aesthetic, muted colors.",
+                "handheld": "Use HANDHELD/PHONE VIDEO style: slightly shaky camera, candid feel, intimate framing, natural lighting, like a personal video recording.",
+                "webcam": "Use WEBCAM style: static front-facing camera, slightly lower quality, casual video call aesthetic.",
+                "found_footage": "Use FOUND FOOTAGE style: documentary feel, realistic, as if this was leaked or discovered footage."
+            }
+            style_guidance = style_map.get(style_override, "")
+        
+        system_prompt = """You are a video director creating prompts for LTX-2, an AI that generates synchronized video AND audio together.
+
+Your job is to write a detailed scene description that includes:
+1. **Video style** - Choose the most appropriate based on the scene's mood and context:
+   - Cinematic (dramatic, romantic, or intense scenes)
+   - Security camera/CCTV (sneaky, voyeuristic, or surveillance moments)
+   - Handheld phone video (intimate, candid, personal moments)
+   - Webcam/video call (casual conversations, confessional moments)
+   - Found footage/documentary (realistic, raw, discovered content)
+
+2. **Visual description** - Setting, lighting, character appearance and action
+3. **Camera details** - Angle, movement, framing
+4. **Dialogue** - Include the ACTUAL spoken lines in quotes (LTX-2 will generate the speech)
+5. **Audio atmosphere** - Ambient sounds, music mood, background noise
+
+FORMAT: Write as a single flowing paragraph, like briefing a film crew. Start with the style/camera type, then describe the scene.
+
+EXAMPLES:
+
+Security camera footage from a bedroom corner, grainy night vision. A woman in pajamas sits on the edge of her bed, illuminated by phone screen glow. She speaks quietly into the phone: "I can't stop thinking about what you said..." Soft ambient room noise, distant city sounds through the window.
+
+Handheld phone video, slightly shaky, intimate framing. A woman in a tank top lies on her stomach on a bed, propped on elbows, speaking directly to camera with a playful smile. She says "So I have this crazy idea..." and bites her lip. Warm bedroom lighting, casual atmosphere, soft background music from a speaker.
+
+Cinematic shot, shallow depth of field, golden hour lighting. A woman walks along a beach at sunset, hair blowing in the wind. She turns to camera and says "I've been waiting for this moment." Waves crashing, seagulls in distance, romantic atmosphere.
+
+Webcam footage, static front-facing view. A woman sits at her desk in a dimly lit room, leaning close to the camera. She whispers conspiratorially: "Don't tell anyone, but..." Keyboard typing sounds, computer fan hum, intimate late-night ambiance.
+
+IMPORTANT:
+- Extract and include the ACTUAL dialogue from the message in quotes
+- Choose the video style that FITS the mood (don't always use cinematic)
+- Include specific audio/ambient details since LTX-2 generates sound
+- Keep it under 100 words but make it vivid""" + (f"\n\n{style_guidance}" if style_guidance else "")
+
+        user_prompt = f"""Character's last message:
+
+{last_assistant_message}
+
+Create a detailed LTX-2 video prompt including the spoken dialogue."""
+
+        # Use the APIManager's media LLM generation method
+        try:
+            scene_prompt = await self.api_manager.generate_media_llm_response(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=250,
+                temperature=0.8  # Slightly higher for creative variety in style selection
+            )
+
+            if scene_prompt:
+                final_prompt = scene_prompt.strip()
+                logger.info(f"\n[LTX Prompt] Generated: {final_prompt}")
+                return final_prompt
+            else:
+                logger.error("[LTX Prompt] Media LLM returned None")
+                return "A woman looks at the camera and speaks warmly. Soft indoor lighting, casual atmosphere."
+        except Exception as e:
+            logger.error(f"[LTX Prompt] Exception: {e}", exc_info=True)
+            return "A woman looks at the camera and speaks warmly. Soft indoor lighting, casual atmosphere."
+
+
         ethnicity_match = re.search(r'\b(?:\d+(?:-year-old)?[\s-]?)?(?:asian|lebanese|black|african|caucasian|white|hispanic|latino|latina|mexican|european|middle eastern|indian|native american|pacific islander|mixed race|biracial|multiracial|[^\s]+?(?=\s+(?:girl|woman|lady|female|man|guy|male|dude)))\b', self.image_prompt, re.IGNORECASE)
         if ethnicity_match:
             ethnicity = ethnicity_match.group()

@@ -6,6 +6,7 @@ let user = urlParams.get('user') || "User";
 let character = urlParams.get('character') || "Anika";
 let resumeSessionParam = urlParams.get('resume') || null;  // Optional session to resume
 let sessionPassword = null;
+let voyMode = false;  // Track if current character is in VOY mode (shows face picker instead of direct swap)
 
 // Scene Queue State (persisted to localStorage)
 let sceneQueue = [];  // Array of {url, type, timestamp}
@@ -42,6 +43,7 @@ const messagesDiv = document.getElementById('messages');
 const messageInput = document.getElementById('message-input');
 const sendBtn = document.getElementById('send-btn');
 const genImageBtn = document.getElementById('gen-image-btn');
+const spycamBtn = document.getElementById('spycam-btn');
 const genImageDirectBtn = document.getElementById('gen-image-direct-btn');
 const genVideoBtn = document.getElementById('gen-video-btn');
 const videoModelSelect = document.getElementById('video-model-select');
@@ -63,6 +65,12 @@ const clearQueueBtn = document.getElementById('clear-queue-btn');
 const passwordModal = document.getElementById('password-modal');
 const passwordInput = document.getElementById('remote-password');
 const submitPasswordBtn = document.getElementById('submit-password-btn');
+
+// Gallery Elements
+const galleryView = document.getElementById('gallery-view');
+const galleryGrid = document.getElementById('gallery-grid');
+const galleryBtn = document.getElementById('gallery-btn');
+const backToChatBtn = document.getElementById('back-to-chat-btn');
 
 // Initialization
 async function init() {
@@ -92,6 +100,18 @@ async function init() {
                     user = sessionData.user;
                     character = sessionData.character;
                     console.log('Joining existing session:', sessionData);
+
+                    // Fetch settings to check VOY mode (same as in initializeSession)
+                    try {
+                        const settingsResp = await fetch(`${API_BASE}/settings`);
+                        if (settingsResp.ok) {
+                            const settingsData = await settingsResp.json();
+                            voyMode = settingsData.voy_mode || false;
+                            console.log('VOY mode:', voyMode);
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch settings:', e);
+                    }
 
                     if (sessionData.requires_password) {
                         passwordModal.classList.remove('hidden');
@@ -228,6 +248,18 @@ async function initializeSession(user, character, resumeSessionId = null) {
     });
     const data = await response.json();
     console.log('Session initialized:', data);
+
+    // Fetch settings to check VOY mode
+    try {
+        const settingsResp = await fetch(`${API_BASE}/settings`);
+        if (settingsResp.ok) {
+            const settingsData = await settingsResp.json();
+            voyMode = settingsData.voy_mode || false;
+            console.log('VOY mode:', voyMode);
+        }
+    } catch (e) {
+        console.error('Failed to fetch settings:', e);
+    }
 
     if (data.resumed) {
         addSystemMessage(`Resumed session with ${character}.`);
@@ -729,6 +761,20 @@ async function generateImage() {
     } catch (error) {
         console.error('Image gen failed:', error);
         addSystemMessage('Failed to generate image.');
+    }
+}
+
+async function generateSpycam() {
+    const imageModel = document.getElementById('image-model-select').value;
+    addSystemMessage(`Generating spycam image (${imageModel})...`);
+    try {
+        const response = await fetch(`${API_BASE}/generate/image?model=${imageModel}&spycam=true`, { method: 'POST' });
+        if (!response.ok) throw new Error('Generation failed');
+        const data = await response.json();
+        addImage(data.image_url, data.prompt);
+    } catch (error) {
+        console.error('Spycam gen failed:', error);
+        addSystemMessage('Failed to generate spycam image.');
     }
 }
 
@@ -1642,6 +1688,22 @@ async function submitImageEdit() {
 }
 
 async function applyFaceswap(imageUrl, btn) {
+    console.log('[FaceSwap] applyFaceswap called, voyMode =', voyMode);
+
+    // In VOY mode, open face picker modal instead of direct swap
+    if (voyMode) {
+        console.log('[FaceSwap] Opening face picker modal');
+        openFacePickerModal(imageUrl, btn);
+        return;
+    }
+
+    // Normal mode: direct face swap with current character
+    console.log('[FaceSwap] Doing direct faceswap');
+    await doFaceswap(imageUrl, null, btn);
+}
+
+// Perform the actual faceswap API call
+async function doFaceswap(imageUrl, sourceCharacter, btn) {
     // Disable button and show loading state
     if (btn) {
         btn.disabled = true;
@@ -1651,12 +1713,15 @@ async function applyFaceswap(imageUrl, btn) {
     addSystemMessage('Applying face swap...');
 
     try {
+        const bodyData = { image_url: imageUrl };
+        if (sourceCharacter) {
+            bodyData.source_character = sourceCharacter;
+        }
+
         const response = await fetch(`${API_BASE}/faceswap`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                image_url: imageUrl
-            })
+            body: JSON.stringify(bodyData)
         });
 
         if (!response.ok) {
@@ -1665,7 +1730,7 @@ async function applyFaceswap(imageUrl, btn) {
         }
 
         const data = await response.json();
-        addImage(data.image_url, 'Face swapped');
+        addImage(data.image_url, sourceCharacter ? `Face: ${sourceCharacter}` : 'Face swapped');
         addSystemMessage('Face swap applied successfully!');
     } catch (error) {
         console.error('Face swap failed:', error);
@@ -1678,6 +1743,115 @@ async function applyFaceswap(imageUrl, btn) {
         }
     }
 }
+
+// ============ FACE PICKER (VOY MODE) ============
+const facePickerModal = document.getElementById('face-picker-modal');
+const facePickerGrid = document.getElementById('face-picker-grid');
+const closeFacePickerBtn = document.getElementById('close-face-picker-btn');
+
+let pendingFaceswapImageUrl = null;
+let pendingFaceswapBtn = null;
+
+function openFacePickerModal(imageUrl, btn) {
+    console.log('[FacePicker] openFacePickerModal called');
+    console.log('[FacePicker] facePickerModal element:', facePickerModal);
+    pendingFaceswapImageUrl = imageUrl;
+    pendingFaceswapBtn = btn;
+
+    if (facePickerModal) {
+        console.log('[FacePicker] Removing hidden class from modal');
+        facePickerModal.classList.remove('hidden');
+        // Force visibility as debug
+        facePickerModal.style.display = 'flex';
+        facePickerModal.style.opacity = '1';
+        facePickerModal.style.visibility = 'visible';
+        facePickerModal.style.pointerEvents = 'auto';
+        loadCharacterFaces();
+    }
+}
+
+function closeFacePickerModal() {
+    if (facePickerModal) {
+        facePickerModal.classList.add('hidden');
+        // Reset inline styles that were forced for visibility
+        facePickerModal.style.display = '';
+        facePickerModal.style.opacity = '';
+        facePickerModal.style.visibility = '';
+        facePickerModal.style.pointerEvents = '';
+    }
+    pendingFaceswapImageUrl = null;
+    pendingFaceswapBtn = null;
+}
+
+// Close modal when clicking outside of modal-content
+if (facePickerModal) {
+    facePickerModal.addEventListener('click', (e) => {
+        // Only close if clicking the backdrop, not the content
+        if (e.target === facePickerModal) {
+            closeFacePickerModal();
+        }
+    });
+}
+
+async function loadCharacterFaces() {
+    if (!facePickerGrid) return;
+
+    facePickerGrid.innerHTML = '<div class="loading">Loading characters...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/characters/faces`);
+        if (!response.ok) throw new Error('Failed to load character faces');
+
+        const data = await response.json();
+        renderFacePickerGrid(data.faces || []);
+    } catch (error) {
+        console.error('Failed to load faces:', error);
+        facePickerGrid.innerHTML = '<div class="loading">Failed to load characters</div>';
+    }
+}
+
+function renderFacePickerGrid(faces) {
+    if (!facePickerGrid) return;
+
+    if (faces.length === 0) {
+        facePickerGrid.innerHTML = '<div class="loading">No characters with reference images found</div>';
+        return;
+    }
+
+    facePickerGrid.innerHTML = '';
+
+    for (const face of faces) {
+        const card = document.createElement('div');
+        card.className = 'face-card';
+        card.innerHTML = `
+            <img src="${face.preview_url}" alt="${face.name}">
+            <span class="face-name">${face.name}</span>
+        `;
+        card.addEventListener('click', () => selectFaceForSwap(face.name));
+        facePickerGrid.appendChild(card);
+    }
+}
+
+async function selectFaceForSwap(characterName) {
+    // Save pending values before closing modal (closing clears them)
+    const imageUrl = pendingFaceswapImageUrl;
+    const btn = pendingFaceswapBtn;
+
+    closeFacePickerModal();
+
+    if (imageUrl) {
+        console.log('[FacePicker] Applying face swap with character:', characterName);
+        await doFaceswap(imageUrl, characterName, btn);
+    } else {
+        console.error('[FacePicker] No pending image URL for face swap');
+    }
+}
+
+// Face picker event listeners
+if (closeFacePickerBtn) {
+    closeFacePickerBtn.addEventListener('click', closeFacePickerModal);
+}
+// ============ END FACE PICKER ============
 
 // Image edit modal event listeners
 if (submitEditBtn) submitEditBtn.addEventListener('click', submitImageEdit);
@@ -1693,6 +1867,180 @@ if (editPromptInput) {
     });
 }
 // ============ END IMAGE EDIT & FACESWAP ============
+
+// ============ IMAGE GALLERY ============
+function openGallery() {
+    // Collect all images from the chat
+    const messageImages = document.querySelectorAll('#messages .message img');
+
+    if (!galleryGrid) return;
+
+    galleryGrid.innerHTML = '';
+
+    if (messageImages.length === 0) {
+        galleryGrid.innerHTML = '<div class="gallery-empty">No images in this chat yet. Generate some images to see them here! 📷</div>';
+    } else {
+        // Add images in chronological order (they're already in order in DOM)
+        let index = 1;
+        messageImages.forEach(img => {
+            const item = document.createElement('div');
+            item.className = 'gallery-item';
+            item.innerHTML = `
+                <span class="gallery-index">#${index}</span>
+                <img src="${img.src}" alt="Gallery image ${index}">
+            `;
+            // Click to open full size in new tab
+            item.addEventListener('click', () => {
+                window.open(img.src, '_blank');
+            });
+            galleryGrid.appendChild(item);
+            index++;
+        });
+    }
+
+    // Hide chat, show gallery
+    document.getElementById('app').style.display = 'none';
+    if (galleryView) galleryView.classList.remove('hidden');
+}
+
+function closeGallery() {
+    // Hide gallery, show chat
+    if (galleryView) galleryView.classList.add('hidden');
+    document.getElementById('app').style.display = '';
+}
+
+// Gallery event listeners
+console.log('[Gallery] galleryBtn element:', galleryBtn);
+console.log('[Gallery] backToChatBtn element:', backToChatBtn);
+if (galleryBtn) {
+    galleryBtn.addEventListener('click', () => {
+        console.log('[Gallery] Gallery button clicked');
+        openGallery();
+    });
+    console.log('[Gallery] Click listener attached to galleryBtn');
+} else {
+    console.error('[Gallery] galleryBtn not found!');
+}
+if (backToChatBtn) {
+    backToChatBtn.addEventListener('click', closeGallery);
+}
+// ============ END IMAGE GALLERY ============
+
+// ============ SPYCAM ============
+if (spycamBtn) {
+    spycamBtn.addEventListener('click', generateSpycam);
+}
+// ============ END SPYCAM ============
+
+// ============ DIRECTOR'S CUT (LTX-2) ============
+const directorModal = document.getElementById('director-modal');
+const directorBtn = document.getElementById('director-btn');
+const closeDirectorBtn = document.getElementById('close-director-btn');
+const generateDirectorBtn = document.getElementById('generate-director-btn');
+const refreshPromptBtn = document.getElementById('refresh-prompt-btn');
+const directorPromptInput = document.getElementById('director-prompt');
+const directorStyleSelect = document.getElementById('director-style');
+const directorDurationInput = document.getElementById('director-duration');
+const directorResolutionSelect = document.getElementById('director-resolution');
+const directorUseImageCheckbox = document.getElementById('director-use-image');
+
+async function openDirectorModal() {
+    if (directorModal) {
+        directorModal.classList.remove('hidden');
+        // Fetch auto-generated prompt
+        await refreshDirectorPrompt();
+    }
+}
+
+async function refreshDirectorPrompt() {
+    if (!directorPromptInput) return;
+
+    directorPromptInput.value = 'Generating prompt from conversation...';
+    directorPromptInput.disabled = true;
+
+    try {
+        const style = directorStyleSelect?.value || '';
+        const url = style ? `${API_BASE}/generate/ltx-prompt?style=${style}` : `${API_BASE}/generate/ltx-prompt`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error('Failed to generate prompt');
+        }
+
+        const data = await response.json();
+        directorPromptInput.value = data.prompt;
+    } catch (error) {
+        console.error('Failed to fetch LTX prompt:', error);
+        directorPromptInput.value = 'A woman speaks warmly to the camera. "Hello there." Soft indoor lighting, casual atmosphere.';
+    } finally {
+        directorPromptInput.disabled = false;
+        directorPromptInput.focus();
+    }
+}
+
+function closeDirectorModal() {
+    if (directorModal) {
+        directorModal.classList.add('hidden');
+    }
+}
+
+async function generateLTXVideo() {
+    const prompt = directorPromptInput?.value?.trim();
+    if (!prompt) {
+        alert('Please enter a scene prompt');
+        return;
+    }
+
+    const duration = parseInt(directorDurationInput?.value) || 5;
+    const resolution = directorResolutionSelect?.value || '1080p';
+    const useSourceImage = directorUseImageCheckbox?.checked ?? true;
+    const styleOverride = directorStyleSelect?.value || null;
+
+    closeDirectorModal();
+    addSystemMessage(`Generating LTX-2 video (${duration}s, ${resolution})... This may take a minute.`);
+
+    try {
+        const response = await fetch(`${API_BASE}/generate/ltx-video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: prompt,
+                use_source_image: useSourceImage,
+                duration: duration,
+                resolution: resolution,
+                fps: 24,
+                style_override: styleOverride
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Video generation failed');
+        }
+
+        const data = await response.json();
+        addSystemMessage(`LTX-2 video generated! (${data.mode}, ${data.duration}s)`);
+        addVideo(data.video_url, 'LTX-2 Director video', 'ltx');
+
+    } catch (error) {
+        console.error('LTX video generation failed:', error);
+        addSystemMessage(`Failed to generate video: ${error.message}`);
+    }
+}
+
+// Director modal event listeners
+if (directorBtn) directorBtn.addEventListener('click', openDirectorModal);
+if (closeDirectorBtn) closeDirectorBtn.addEventListener('click', closeDirectorModal);
+if (generateDirectorBtn) generateDirectorBtn.addEventListener('click', generateLTXVideo);
+if (refreshPromptBtn) refreshPromptBtn.addEventListener('click', refreshDirectorPrompt);
+
+// Regenerate prompt when style changes
+if (directorStyleSelect) {
+    directorStyleSelect.addEventListener('change', () => {
+        refreshDirectorPrompt();
+    });
+}
+// ============ END DIRECTOR'S CUT ============
 
 // Start
 document.addEventListener('DOMContentLoaded', init);

@@ -52,6 +52,10 @@ if not os.path.exists("output"):
     os.makedirs("output")
 app.mount("/output", StaticFiles(directory="output"), name="output")
 
+# Serve reference images for face picker modal
+if os.path.exists("reference_images"):
+    app.mount("/reference_images", StaticFiles(directory="reference_images"), name="reference_images")
+
 # --- Global State ---
 class AppState:
     def __init__(self):
@@ -426,7 +430,7 @@ async def get_image_models():
     return {"models": models}
 
 @app.post("/api/generate/image")
-async def generate_image(model: str = "z-image-turbo"):
+async def generate_image(model: str = "z-image-turbo", spycam: bool = False):
     """Generate image with specified model."""
     if not state.image_manager:
         raise HTTPException(status_code=400, detail="Session not initialized")
@@ -446,7 +450,7 @@ async def generate_image(model: str = "z-image-turbo"):
     # Model value is already the full filename with extension from the dropdown
     sd_checkpoint = model
     
-    logger.info(f"[Image Gen] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}")
+    logger.info(f"[Image Gen] Model: {model}, sd_mode: {sd_mode}, checkpoint: {sd_checkpoint}, spycam: {spycam}")
     
     # 1. Generate Prompt
     conversation = state.conversation_manager.get_conversation()
@@ -456,7 +460,7 @@ async def generate_image(model: str = "z-image-turbo"):
     pov_mode = char_settings.get("pov_mode", False)
     first_person_mode = char_settings.get("first_person_mode", False)
     
-    prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode, first_person_mode=first_person_mode)
+    prompt = await state.image_manager.generate_selfie_prompt(conversation, pov_mode=pov_mode, first_person_mode=first_person_mode, spycam_mode=spycam)
     
     if not prompt:
         raise HTTPException(status_code=500, detail="Failed to generate image prompt")
@@ -985,9 +989,95 @@ async def generate_lipsync(model: str = "veed"):
         "model": model
     }
 
+# --- LTX-2 Director Mode Endpoints ---
+class LTXVideoRequest(BaseModel):
+    prompt: str
+    use_source_image: bool = True  # True = image-to-video, False = text-to-video
+    duration: int = 5  # 1-20 seconds
+    resolution: str = "1080p"  # 720p, 1080p, 4k
+    fps: int = 24
+    style_override: Optional[str] = None  # cinematic, security, handheld, webcam, found_footage
+
+@app.get("/api/generate/ltx-prompt")
+async def generate_ltx_prompt(style: Optional[str] = None):
+    """Fetch auto-generated LTX-2 video prompt from conversation context."""
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    if not state.image_manager:
+        raise HTTPException(status_code=400, detail="Image manager not initialized")
+    
+    conversation = state.conversation_manager.get_conversation()
+    prompt = await state.image_manager.generate_ltx_video_prompt(conversation, style_override=style)
+    
+    return {"prompt": prompt}
+
+@app.post("/api/generate/ltx-video")
+async def generate_ltx_video(request: LTXVideoRequest):
+    """Generate video with audio using LTX-2 Distilled model."""
+    
+    if not state.replicate_manager:
+        raise HTTPException(status_code=400, detail="Replicate manager not initialized")
+    
+    if not state.conversation_manager:
+        raise HTTPException(status_code=400, detail="Session not initialized")
+    
+    logger.info(f"[LTX Video] Starting generation: mode={'image-to-video' if request.use_source_image else 'text-to-video'}, duration={request.duration}s, resolution={request.resolution}")
+    logger.info(f"[LTX Video] Prompt: {request.prompt[:100]}...")
+    
+    # Get source image if image-to-video mode
+    image_path = None
+    if request.use_source_image:
+        image_path = state.conversation_manager.get_last_selfie_path()
+        if not image_path or not os.path.exists(image_path):
+            raise HTTPException(status_code=400, detail="No recent image found. Please generate an image first, or disable 'Use source image' for text-to-video mode.")
+        logger.info(f"[LTX Video] Using source image: {image_path}")
+    
+    # Generate video
+    video_url = await state.replicate_manager.generate_ltx_video(
+        prompt=request.prompt,
+        image_path=image_path,
+        duration=request.duration,
+        resolution=request.resolution,
+        fps=request.fps
+    )
+    
+    if not video_url:
+        raise HTTPException(status_code=500, detail="Failed to generate LTX-2 video")
+    
+    # Download video
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        async with session.get(video_url) as resp:
+            if resp.status == 200:
+                video_data = await resp.read()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                video_filename = f"ltx_video_{timestamp}.mp4"
+                video_path = os.path.join(state.conversation_manager.subfolder_path, video_filename)
+                
+                with open(video_path, "wb") as f:
+                    f.write(video_data)
+                    
+                # Set as last video for chaining (lipsync, etc)
+                state.conversation_manager.set_last_video_path(video_path)
+                logger.info(f"[LTX Video] Saved to: {video_path}")
+            else:
+                raise HTTPException(status_code=500, detail="Failed to download generated video")
+    
+    relative_path = os.path.relpath(video_path, start=os.getcwd())
+    relative_path = relative_path.replace("\\", "/")
+    
+    return {
+        "video_url": f"/{relative_path}",
+        "prompt": request.prompt,
+        "mode": "image-to-video" if request.use_source_image else "text-to-video",
+        "duration": request.duration
+    }
+
 class LoraItem(BaseModel):
     name: str
     url: str
+
 
 class SyncLorasRequest(BaseModel):
     loras: list[LoraItem]
@@ -1226,8 +1316,12 @@ async def extract_frame(request: ExtractFrameRequest):
         logger.info(f"[Extract Frame] Frame extracted: {output_path}")
         
         # Apply face swap using ReActor (if image_manager is available)
+        # Skip faceswap if character is in VOY mode
         final_path = output_path
-        if state.image_manager:
+        char_data = characters.get(state.character_name, {})
+        is_voy_mode = char_data.get("voy_mode", False)
+        
+        if state.image_manager and not is_voy_mode:
             logger.info("[Extract Frame] Applying face swap...")
             faceswap_path = await state.image_manager.apply_faceswap(output_path)
             if faceswap_path:
@@ -1235,6 +1329,8 @@ async def extract_frame(request: ExtractFrameRequest):
                 logger.info(f"[Extract Frame] Face swap applied: {final_path}")
             else:
                 logger.warning("[Extract Frame] Face swap failed, using original frame")
+        elif is_voy_mode:
+            logger.info("[Extract Frame] VOY mode - skipping face swap")
         
         # Set as last selfie path for next video generation
         state.conversation_manager.set_last_selfie_path(final_path)
@@ -1291,6 +1387,10 @@ async def get_settings():
         raise HTTPException(status_code=400, detail="Session not initialized")
         
     char_data = characters.get(state.character_name, {})
+    voy_mode_value = char_data.get("voy_mode", False)
+    logger.info(f"[Settings] character_name='{state.character_name}'")
+    logger.info(f"[Settings] char_data keys: {list(char_data.keys())}")
+    logger.info(f"[Settings] voy_mode in char_data: {'voy_mode' in char_data}, value={voy_mode_value}")
     return {
         "system_prompt": char_data.get("system_prompt", ""),
         "image_prompt": char_data.get("image_prompt", ""),
@@ -1299,7 +1399,8 @@ async def get_settings():
         "read_narration": char_data.get("read_narration", False),
         "pov_mode": char_data.get("pov_mode", False),
         "first_person_mode": char_data.get("first_person_mode", False),
-        "sd_mode": char_data.get("sd_mode", "lumina")
+        "sd_mode": char_data.get("sd_mode", "lumina"),
+        "voy_mode": voy_mode_value
     }
 
 @app.get("/api/export")
@@ -1541,8 +1642,76 @@ async def edit_image(request: EditImageRequest):
         "prompt": request.prompt
     }
 
+@app.get("/api/characters/faces")
+async def get_character_faces():
+    """Get all characters with reference images for face picker modal."""
+    import glob
+    
+    faces = []
+    cwd = os.getcwd()
+    
+    # Get faces from all character definitions that have source_faces_folder
+    for char_name, char_data in characters.items():
+        source_folder = char_data.get("source_faces_folder")
+        if source_folder and os.path.exists(source_folder):
+            # Find first image in folder
+            images = []
+            for ext in ["*.png", "*.jpg", "*.jpeg", "*.webp"]:
+                images.extend(glob.glob(os.path.join(source_folder, ext)))
+            
+            if images:
+                # Use first image as preview
+                preview_path = images[0]
+                
+                # Try to make a relative URL, fallback to dynamic API endpoint
+                try:
+                    relative_preview = os.path.relpath(preview_path, start=cwd)
+                    preview_url = "/" + relative_preview.replace("\\", "/")
+                except ValueError:
+                    # Cross-drive path on Windows - use dynamic API endpoint
+                    # URL-encode character name for safety
+                    from urllib.parse import quote
+                    preview_url = f"/api/face-image/{quote(char_name, safe='')}"
+                
+                faces.append({
+                    "name": char_name,
+                    "preview_url": preview_url,
+                    "folder_path": source_folder
+                })
+    
+    logger.info(f"[FacePicker] Found {len(faces)} characters with faces: {[f['name'] for f in faces]}")
+    return {"faces": faces}
+
+@app.get("/api/face-image/{character_name}")
+async def get_face_image(character_name: str):
+    """Serve a character's face preview image from their source_faces_folder (supports cross-drive paths)."""
+    import glob
+    from fastapi.responses import FileResponse
+    from urllib.parse import unquote
+    
+    char_name = unquote(character_name)
+    char_data = characters.get(char_name)
+    
+    if not char_data:
+        raise HTTPException(status_code=404, detail=f"Character not found: {char_name}")
+    
+    source_folder = char_data.get("source_faces_folder")
+    if not source_folder or not os.path.exists(source_folder):
+        raise HTTPException(status_code=404, detail=f"No source faces folder for: {char_name}")
+    
+    # Find first image in folder
+    images = []
+    for ext in ["*.png", "*.jpg", "*.jpeg", "*.webp"]:
+        images.extend(glob.glob(os.path.join(source_folder, ext)))
+    
+    if not images:
+        raise HTTPException(status_code=404, detail=f"No images found in folder for: {char_name}")
+    
+    return FileResponse(images[0])
+
 class FaceswapRequest(BaseModel):
     image_url: str  # Relative URL like /conversations/.../image.png
+    source_character: Optional[str] = None  # If provided, use this character's face instead of current
 
 @app.post("/api/faceswap")
 async def faceswap_image(request: FaceswapRequest):
@@ -1561,8 +1730,18 @@ async def faceswap_image(request: FaceswapRequest):
     if not os.path.exists(absolute_path):
         raise HTTPException(status_code=400, detail=f"Image not found: {request.image_url}")
     
+    # Determine source folder (use custom character if provided, else current character)
+    source_folder = None
+    if request.source_character:
+        # Look up source_faces_folder from character definition
+        char_data = characters.get(request.source_character, {})
+        source_folder = char_data.get("source_faces_folder")
+        if not source_folder or not os.path.exists(source_folder):
+            raise HTTPException(status_code=400, detail=f"Reference images not found for character: {request.source_character}")
+        logger.info(f"[Faceswap] Using custom source folder: {source_folder}")
+    
     # Apply face swap using existing image manager method
-    faceswap_path = await state.image_manager.apply_faceswap(absolute_path)
+    faceswap_path = await state.image_manager.apply_faceswap(absolute_path, source_folder=source_folder)
     
     if not faceswap_path:
         raise HTTPException(status_code=500, detail="Face swap failed")

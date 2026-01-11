@@ -877,3 +877,84 @@ class ReplicateManager:
             logger.error(f"[Qwen Image Edit] Error: {e}", exc_info=True)
             return None
 
+    async def generate_ltx_video(
+        self,
+        prompt: str,
+        image_path: str = None,
+        duration: int = 5,
+        resolution: str = "1080p",
+        fps: int = 24
+    ) -> str | None:
+        """Generate video (with audio) using LTX-2 Distilled model.
+        
+        This model generates synchronized audio+video in one pass, including:
+        - Dialog/speech
+        - Ambient sounds
+        - Music
+        
+        Args:
+            prompt: Detailed scene description including dialog in quotes
+            image_path: Optional path to source image for image-to-video mode
+            duration: Video duration in seconds (1-20)
+            resolution: Output resolution ("720p", "1080p", or "4k")
+            fps: Frames per second (15-50)
+            
+        Returns:
+            URL to generated video, or None if failed
+        """
+        import base64 # Added import here to ensure it's available for this method
+        mode = "image-to-video" if image_path else "text-to-video"
+        logger.info(f"[LTX-2] Generating {mode} video, duration={duration}s, resolution={resolution}, fps={fps}")
+        logger.info(f"[LTX-2] Prompt: {prompt[:200]}...")
+        
+        try:
+            # Build input payload
+            input_data = {
+                "prompt": prompt,
+                "negative_prompt": "blurry, low quality, distorted, watermark",
+                "width": 1920 if resolution == "1080p" else (1280 if resolution == "720p" else 3840),
+                "height": 1080 if resolution == "1080p" else (720 if resolution == "720p" else 2160),
+                "num_frames": min(duration * fps, 500),  # Model may have frame limits
+                "fps": fps,
+                "guidance_scale": 3.5,
+                "num_inference_steps": 30,
+            }
+            
+            # Add source image for image-to-video mode
+            if image_path:
+                with open(image_path, "rb") as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
+                input_data["image"] = f"data:image/jpeg;base64,{image_data}"
+                logger.info(f"[LTX-2] Using source image: {image_path}")
+            
+            # Use replicate client
+            output = await asyncio.to_thread(
+                self.replicate_client.run,
+                "lightricks/ltx-2-distilled",
+                input=input_data
+            )
+            
+            logger.info(f"[LTX-2] Generation successful. Output type: {type(output)}")
+            
+            # Handle different output types
+            if isinstance(output, list) and len(output) > 0:
+                item = output[0]
+                if hasattr(item, 'url'):
+                    return str(item.url)
+                else:
+                    return str(item)
+            elif output:
+                if hasattr(output, 'url'):
+                    return str(output.url)
+                return str(output)
+            return None
+            
+        except replicate.exceptions.ReplicateError as e:
+            logger.error(f"[LTX-2] Replicate API error: {e}")
+            return None
+        except FileNotFoundError:
+            logger.error(f"[LTX-2] Image file not found: {image_path}")
+            return None
+        except Exception as e:
+            logger.error(f"[LTX-2] Error: {e}", exc_info=True)
+            return None

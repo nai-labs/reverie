@@ -21,6 +21,7 @@
                 <img src="logo.png" alt="Logo" class="logo-img">
                 <div class="controls">
                     <button id="sessions-btn" class="icon-btn" title="Browse Sessions">📂</button>
+                    <button id="gallery-btn" class="icon-btn" title="Image Gallery">🖼️</button>
                     <button id="export-btn" class="icon-btn" title="Export Gallery">📥</button>
                     <button id="settings-btn" class="icon-btn">⚙️</button>
                 </div>
@@ -61,6 +62,7 @@
                 </div>
                 <div class="action-buttons">
                     <button id="gen-image-btn" class="action-btn">📸 Image</button>
+                    <button id="spycam-btn" class="action-btn">📹 Spycam</button>
                     <button id="gen-image-direct-btn" class="action-btn">🎯 Direct</button>
                     <select id="image-model-select" class="model-select">
                         <option value="">Loading models...</option>
@@ -74,6 +76,7 @@
                     <button id="gen-video-btn" class="action-btn">🎥 Generate</button>
                     <button id="lora-video-btn" class="action-btn">🎬 WAN</button>
                     <button id="script-tts-btn" class="action-btn">🎤 Script</button>
+                    <button id="director-btn" class="action-btn">🎬 Director</button>
                     <select id="lipsync-model-select" class="model-select">
                         <option value="veed" selected>Veed (default)</option>
                         <option value="pixverse">Pixverse (express)</option>
@@ -333,7 +336,96 @@
                 </div>
             </div>
         </div>
+
+        <!-- LTX-2 Director Modal -->
+        <div id="director-modal" class="modal hidden">
+            <div class="modal-content director-modal-content">
+                <h2>🎬 Director's Cut</h2>
+                <p class="modal-subtitle">LTX-2 generates video <strong>with audio</strong> - dialog, ambient sounds,
+                    music!</p>
+
+                <div class="form-group">
+                    <label for="director-style">Style (optional override)</label>
+                    <select id="director-style">
+                        <option value="">Auto-detect from context</option>
+                        <option value="cinematic">🎥 Cinematic (film-like)</option>
+                        <option value="security">📹 Security Camera (surveillance)</option>
+                        <option value="handheld">📱 Handheld (phone video)</option>
+                        <option value="webcam">💻 Webcam (video call)</option>
+                        <option value="found_footage">📼 Found Footage (documentary)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <label for="director-prompt">Scene Prompt</label>
+                        <button type="button" id="refresh-prompt-btn" class="icon-btn small"
+                            title="Regenerate prompt">🔄</button>
+                    </div>
+                    <textarea id="director-prompt" rows="6"
+                        placeholder="Loading prompt from conversation..."></textarea>
+                    <p class="form-hint">Include dialogue in quotes for LTX-2 to speak. Edit freely!</p>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="director-duration">Duration (seconds)</label>
+                        <input type="number" id="director-duration" value="5" min="1" max="20" step="1">
+                    </div>
+                    <div class="form-group half">
+                        <label for="director-resolution">Resolution</label>
+                        <select id="director-resolution">
+                            <option value="720p">720p (faster)</option>
+                            <option value="1080p" selected>1080p (recommended)</option>
+                            <option value="4k">4K (slower)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" id="director-use-image" checked>
+                    <label for="director-use-image">Use last image (image-to-video mode)</label>
+                    <p class="form-hint">Uncheck for pure text-to-video generation</p>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="generate-director-btn">🎬 Generate Video</button>
+                    <button id="close-director-btn">Close</button>
+                </div>
+            </div>
+        </div>
     </div>
+
+
+    <!-- Gallery View (replaces chat when open) -->
+    <div id="gallery-view" class="gallery-view hidden">
+        <div class="gallery-header">
+            <h2>📷 Image Gallery</h2>
+            <button id="back-to-chat-btn" class="action-btn">← Back to Chat</button>
+        </div>
+        <div id="gallery-grid" class="gallery-grid">
+            <!-- Images populated by JS -->
+        </div>
+    </div>
+
+    <!-- Face Picker Modal (for VOY mode) - placed at body level for proper z-index stacking -->
+    <div id="face-picker-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>🎭 Select Face</h2>
+            <div class="form-group">
+                <p style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 15px;">Click a character to swap their face
+                    into the image:</p>
+            </div>
+            <div id="face-picker-grid" class="face-picker-grid">
+                <!-- Character faces will be populated by JS -->
+                <div class="loading">Loading characters...</div>
+            </div>
+            <div class="modal-actions">
+                <button id="close-face-picker-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 
