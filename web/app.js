@@ -7,6 +7,11 @@ let character = urlParams.get('character') || "Anika";
 let resumeSessionParam = urlParams.get('resume') || null;  // Optional session to resume
 let sessionPassword = null;
 let voyMode = false;  // Track if current character is in VOY mode (shows face picker instead of direct swap)
+let stealthMode = false;  // When true, hide media thumbnails and show icons instead
+
+// Load stealth mode preference
+const storedStealthMode = localStorage.getItem('reverie_stealth_mode');
+if (storedStealthMode === 'true') stealthMode = true;
 
 // Scene Queue State (persisted to localStorage)
 let sceneQueue = [];  // Array of {url, type, timestamp}
@@ -72,6 +77,34 @@ const galleryGrid = document.getElementById('gallery-grid');
 const galleryBtn = document.getElementById('gallery-btn');
 const backToChatBtn = document.getElementById('back-to-chat-btn');
 
+// Stealth Mode
+const stealthBtn = document.getElementById('stealth-btn');
+
+function toggleStealthMode() {
+    stealthMode = !stealthMode;
+    localStorage.setItem('reverie_stealth_mode', stealthMode);
+
+    // Update button appearance
+    if (stealthBtn) {
+        stealthBtn.textContent = stealthMode ? '🙈' : '👁️';
+        stealthBtn.title = stealthMode ? 'Stealth Mode ON (click to show media)' : 'Toggle Stealth Mode (hide media)';
+        stealthBtn.classList.toggle('active', stealthMode);
+    }
+
+    addSystemMessage(stealthMode ? 'Stealth mode ON - media hidden' : 'Stealth mode OFF - media visible');
+}
+
+// Initialize stealth button appearance on load
+if (stealthBtn) {
+    stealthBtn.addEventListener('click', toggleStealthMode);
+    // Set initial appearance based on saved preference
+    if (stealthMode) {
+        stealthBtn.textContent = '🙈';
+        stealthBtn.title = 'Stealth Mode ON (click to show media)';
+        stealthBtn.classList.add('active');
+    }
+}
+
 // Initialization
 async function init() {
     try {
@@ -108,6 +141,18 @@ async function init() {
                             const settingsData = await settingsResp.json();
                             voyMode = settingsData.voy_mode || false;
                             console.log('VOY mode:', voyMode);
+
+                            // Apply default settings based on mode
+                            const firstPersonCheckbox = document.getElementById('first-person-mode');
+                            const povCheckbox = document.getElementById('pov-mode');
+
+                            if (voyMode) {
+                                if (firstPersonCheckbox) firstPersonCheckbox.checked = true;
+                                console.log('[VOY] Set first-person mode ON by default');
+                            } else {
+                                if (firstPersonCheckbox) firstPersonCheckbox.checked = false;
+                                if (povCheckbox) povCheckbox.checked = false;
+                            }
                         }
                     } catch (e) {
                         console.error('Failed to fetch settings:', e);
@@ -154,11 +199,22 @@ async function loadImageModels() {
         select.innerHTML = '';
 
         if (data.models && data.models.length > 0) {
+            // Find the preferred default: z-image_turbo_fp8_e4m3fn.safetensors
+            let defaultIndex = 0;
+            data.models.forEach((model, index) => {
+                const nameLower = model.value.toLowerCase();
+                // Prefer the vanilla fp8 e4m3fn model
+                if (nameLower.includes('z-image_turbo_fp8_e4m3fn') || nameLower.includes('z-image-turbo_fp8_e4m3fn')) {
+                    defaultIndex = index;
+                }
+            });
+
+
             data.models.forEach((model, index) => {
                 const option = document.createElement('option');
                 option.value = model.value;
                 option.textContent = model.label;
-                if (index === 0) option.selected = true;
+                if (index === defaultIndex) option.selected = true;
                 select.appendChild(option);
             });
         } else {
@@ -169,6 +225,7 @@ async function loadImageModels() {
         select.innerHTML = '<option value="">Error loading models</option>';
     }
 }
+
 
 async function authenticate() {
     const password = passwordInput.value;
@@ -256,6 +313,20 @@ async function initializeSession(user, character, resumeSessionId = null) {
             const settingsData = await settingsResp.json();
             voyMode = settingsData.voy_mode || false;
             console.log('VOY mode:', voyMode);
+
+            // Apply default settings based on mode
+            const firstPersonCheckbox = document.getElementById('first-person-mode');
+            const povCheckbox = document.getElementById('pov-mode');
+
+            if (voyMode) {
+                // VOY mode: enable first-person mode by default
+                if (firstPersonCheckbox) firstPersonCheckbox.checked = true;
+                console.log('[VOY] Set first-person mode ON by default');
+            } else {
+                // Non-VOY: ensure both are unchecked by default
+                if (firstPersonCheckbox) firstPersonCheckbox.checked = false;
+                if (povCheckbox) povCheckbox.checked = false;
+            }
         }
     } catch (e) {
         console.error('Failed to fetch settings:', e);
@@ -292,6 +363,13 @@ async function sendMessage() {
         // Bot Response
         addMessage(character, data.response, 'bot', data.tts_url);
 
+        // VOY mode: auto-generate direct image after each bot response
+        if (voyMode) {
+            console.log('[VOY] Auto-triggering direct image generation');
+            // Small delay to let the message render
+            setTimeout(() => generateImageDirect(), 500);
+        }
+
     } catch (error) {
         console.error('Chat failed:', error);
         addSystemMessage('Error sending message.');
@@ -311,10 +389,10 @@ function addMessage(sender, content, type, audioFile = null) {
     let html = `<div class="content">${formattedContent}</div>`;
 
     if (audioFile) {
-        // Add audio player
+        // Add audio player - NO autoplay, user must click play
         html += `
             <div class="audio-player">
-                <audio controls autoplay>
+                <audio controls preload="none">
                     <source src="${audioFile}" type="audio/mpeg">
                     Your browser does not support the audio element.
                 </audio>
@@ -397,49 +475,94 @@ function addImage(url, prompt) {
     // Escape single quotes in URL and prompt for onclick handlers
     const escapedUrl = url.replace(/'/g, "\\'");
     const escapedPrompt = (prompt || '').replace(/'/g, "\\'");
-    msgDiv.innerHTML = `
-        <div class="content">
-            <img id="${imageId}" src="${url}" alt="${prompt || ''}" onclick="window.open('${escapedUrl}', '_blank')">
-            <div class="image-actions">
-                <button class="add-to-story-btn" onclick="addToSceneQueue('${escapedUrl}', 'image', '${imageId}', this, 'image')">
-                    ➕ Story
-                </button>
-                <button class="edit-image-btn" onclick="openEditModal('${escapedUrl}')">
-                    ✏️ Edit
-                </button>
-                <button class="faceswap-btn" onclick="applyFaceswap('${escapedUrl}', this)">
-                    🔄 Face
-                </button>
+
+    if (stealthMode) {
+        // Stealth mode: show icon instead of image
+        msgDiv.innerHTML = `
+            <div class="content stealth-media">
+                <span class="stealth-icon" onclick="window.open('${escapedUrl}', '_blank')" title="Click to view image">📷</span>
+                <span class="stealth-label">Image</span>
+                <div class="image-actions">
+                    <button class="add-to-story-btn" onclick="addToSceneQueue('${escapedUrl}', 'image', '${imageId}', this, 'image')">
+                        ➕ Story
+                    </button>
+                    <button class="edit-image-btn" onclick="openEditModal('${escapedUrl}')">
+                        ✏️ Edit
+                    </button>
+                    <button class="faceswap-btn" onclick="applyFaceswap('${escapedUrl}', this)">
+                        🔄 Face
+                    </button>
+                </div>
             </div>
-        </div>
-    `;
+        `;
+    } else {
+        msgDiv.innerHTML = `
+            <div class="content">
+                <img id="${imageId}" src="${url}" alt="${prompt || ''}" onclick="window.open('${escapedUrl}', '_blank')">
+                <div class="image-actions">
+                    <button class="add-to-story-btn" onclick="addToSceneQueue('${escapedUrl}', 'image', '${imageId}', this, 'image')">
+                        ➕ Story
+                    </button>
+                    <button class="edit-image-btn" onclick="openEditModal('${escapedUrl}')">
+                        ✏️ Edit
+                    </button>
+                    <button class="faceswap-btn" onclick="applyFaceswap('${escapedUrl}', this)">
+                        🔄 Face
+                    </button>
+                </div>
+            </div>
+        `;
+    }
     messagesDiv.appendChild(msgDiv);
     scrollToBottom();
 
-    // Update background
-    backgroundLayer.style.backgroundImage = `url('${url}')`;
+    // Update background (only if not in stealth mode)
+    if (!stealthMode) {
+        backgroundLayer.style.backgroundImage = `url('${url}')`;
+    }
 }
 
 function addVideo(url, prompt, type = 'video') {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot';
     const videoId = `video-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    msgDiv.innerHTML = `
-        <div class="content">
-            <video id="${videoId}" controls autoplay loop>
-                <source src="${url}" type="video/mp4">
-                Your browser does not support the video tag.
-            </video>
-            <div class="video-actions">
-                <button class="add-to-story-btn" onclick="addToSceneQueue('${url}', '${type}', '${videoId}', this, 'video')">
-                    ➕ Add to Story
-                </button>
-                <button class="add-to-story-btn" onclick="extractLastFrame('${url}')">
-                    📷 Use Last Frame
-                </button>
+    const escapedUrl = url.replace(/'/g, "\\'");
+
+    if (stealthMode) {
+        // Stealth mode: show icon instead of video - opens in new tab without autoplay
+        msgDiv.innerHTML = `
+            <div class="content stealth-media">
+                <span class="stealth-icon" onclick="window.open('${escapedUrl}', '_blank')" title="Click to view video">🎬</span>
+                <span class="stealth-label">Video</span>
+                <div class="video-actions">
+                    <button class="add-to-story-btn" onclick="addToSceneQueue('${escapedUrl}', '${type}', '${videoId}', this, 'video')">
+                        ➕ Add to Story
+                    </button>
+                    <button class="add-to-story-btn" onclick="extractLastFrame('${escapedUrl}')">
+                        📷 Use Last Frame
+                    </button>
+                </div>
             </div>
-        </div>
-    `;
+        `;
+    } else {
+        // Normal mode: show video but NO autoplay - user must click play
+        msgDiv.innerHTML = `
+            <div class="content">
+                <video id="${videoId}" controls loop preload="metadata">
+                    <source src="${url}" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+                <div class="video-actions">
+                    <button class="add-to-story-btn" onclick="addToSceneQueue('${escapedUrl}', '${type}', '${videoId}', this, 'video')">
+                        ➕ Add to Story
+                    </button>
+                    <button class="add-to-story-btn" onclick="extractLastFrame('${escapedUrl}')">
+                        📷 Use Last Frame
+                    </button>
+                </div>
+            </div>
+        `;
+    }
     messagesDiv.appendChild(msgDiv);
     scrollToBottom();
 }
@@ -447,14 +570,27 @@ function addVideo(url, prompt, type = 'video') {
 function addAudio(url) {
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot';
-    msgDiv.innerHTML = `
-        <div class="content">
-            <audio controls>
-                <source src="${url}" type="audio/mpeg">
-                Your browser does not support the audio element.
-            </audio>
-        </div>
-    `;
+    const escapedUrl = url.replace(/'/g, "\\'");
+
+    if (stealthMode) {
+        // Stealth mode: show icon instead of audio player
+        msgDiv.innerHTML = `
+            <div class="content stealth-media">
+                <span class="stealth-icon" onclick="window.open('${escapedUrl}', '_blank')" title="Click to open audio">🔊</span>
+                <span class="stealth-label">Audio</span>
+            </div>
+        `;
+    } else {
+        // Normal mode: show audio player - NO autoplay
+        msgDiv.innerHTML = `
+            <div class="content">
+                <audio controls preload="none">
+                    <source src="${url}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
+            </div>
+        `;
+    }
     messagesDiv.appendChild(msgDiv);
     scrollToBottom();
 }

@@ -963,12 +963,19 @@ class BotLauncher:
                 params['resume'] = resume_folder
             
             query_params = urllib.parse.urlencode(params)
-            webbrowser.open(f"http://localhost:8000?{query_params}")
+            # Disabled auto-open - user will open browser manually
+            # webbrowser.open(f"http://localhost:8000?{query_params}")
             
             # Use cmd /k to keep window open on error for debugging
             env = os.environ.copy()
             env["USE_NGROK"] = "true" if self.use_ngrok_var.get() else "false"
             env["NGROK_AUTH_TOKEN"] = self.ngrok_token_entry.get()
+            
+            # Pass character/user/resume to server so it can auto-initialize
+            env["REVERIE_USER"] = user
+            env["REVERIE_CHARACTER"] = char
+            if resume_folder:
+                env["REVERIE_RESUME"] = resume_folder
             
             # Save settings
             self.user_settings["use_ngrok"] = self.use_ngrok_var.get()

@@ -117,28 +117,28 @@ class ImageManager:
                 ALWAYS indicate what she's wearing in the photo, top and bottom, and where she is based on context.
                 ALWAYS prioritize the latter part of the context to describe her body position and what she's doing. use the earlier context mostly for deducing the setting."""
             elif spycam_mode:
-                # Spycam Mode - Surveillance camera style
+                # Spycam Mode - Fisheye surveillance camera style
                 context += """
-                The prompt should follow this surveillance camera format:
+                The prompt should follow this fisheye surveillance camera format:
 
-                A grainy, 1024p [camera type] view of [location], captured from a [camera angle]. The subject is a [character description: body type, COLOR of top, COLOR of bottom, shoes/barefoot, position/action]. CCTV security camera footage. [lighting]. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "[contextual date/time]" in blocky white font.
+                A grainy, low-resolution security camera shot from a high angle, inside a fisheye lens distortion glass circle, highly distorted with a wide angle. [location description]. The subject is a [character description: body type, COLOR of top, COLOR of bottom, shoes/barefoot, position/action]. The edges warp dramatically toward the circular frame. [lighting]. Washed-out, desaturated colors with VHS-like grain. A digital timestamp overlay displays "[contextual date/time]" in blocky white font.
 
-                CAMERA TYPE SELECTION (pick the most appropriate based on location):
-                - Bedroom/living room/home interior → nanny cam, corner security camera
-                - Front door/porch/entrance → RING doorbell camera
-                - Night/dark scene → infrared night vision camera
-                - Store/retail/mall → ceiling security camera
-                - Office/hallway/elevator → overhead security camera
-                - Parking lot/ATM/outdoor → pole-mounted security camera
+                AESTHETIC REQUIREMENTS:
+                - ALWAYS include: "a shot from a high angle, inside a fisheye lens distortion glass circle, highly distorted with a wide angle"
+                - Strong barrel distortion effect curving toward the edges
+                - Overhead/ceiling-mounted camera perspective
+                - Low quality, grainy surveillance footage look
+                - Desaturated, muted color palette
 
                 <EXAMPLES>
-                A grainy, 1024p RING doorbell camera view of a front porch at night, captured from a high wall-mounted angle. The subject is a young woman with dark hair wearing a white tank top and grey shorts, barefoot, standing at the door looking back over her shoulder. CCTV security camera footage. Dim porch light illumination. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "2025-11-28 23:17" in blocky white font.
+                A grainy, low-resolution security camera shot from a high angle, inside a fisheye lens distortion glass circle, highly distorted with a wide angle. A bedroom at night with dim lamp lighting. The subject is a young woman with dark hair wearing a white tank top and grey shorts, barefoot, sitting on the edge of the bed looking at her phone. The edges warp dramatically toward the circular frame. Infrared-tinted glow. Washed-out, desaturated colors with VHS-like grain. A digital timestamp overlay displays "2025-11-28 23:17" in blocky white font.
 
-                A grainy, 1024p infrared security camera view of a dark bedroom, captured from a high corner angle. The subject is a woman in light blue pajama top and matching shorts sitting on the edge of the bed looking at her phone. CCTV security camera footage. Infrared night vision glow. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "2025-11-29 02:34" in blocky white font.
+                A grainy, low-resolution security camera shot from a high angle, inside a fisheye lens distortion glass circle, highly distorted with a wide angle. A living room with soft ambient lighting from a TV. The subject is a woman in a light blue oversized t-shirt and black shorts, lying on the couch looking up lazily. The edges warp dramatically toward the circular frame. Cool blue TV glow mixed with warm lamp light. Washed-out, desaturated colors with VHS-like grain. A digital timestamp overlay displays "2025-11-29 02:34" in blocky white font.
 
-                A grainy, 1024p ceiling security camera view of an office hallway, captured from an overhead angle. The subject is a woman with her hair in a bun wearing a beige unbuttoned blouse and grey pencil skirt, black heels, walking toward the elevator. CCTV security camera footage. Harsh fluorescent lighting. The color palette is restricted to washed-out, VHS muted tones. A digital timestamp in the lower corner displays "2025-11-28 18:42" in blocky white font.
+                A grainy, low-resolution security camera shot from a high angle, inside a fisheye lens distortion glass circle, highly distorted with a wide angle. A hallway near the front door. The subject is a woman with her hair in a ponytail wearing a beige cardigan and grey yoga pants, white socks, walking toward the door looking back over her shoulder. The edges warp dramatically toward the circular frame. Harsh overhead fluorescent lighting. Washed-out, desaturated colors with VHS-like grain. A digital timestamp overlay displays "2025-11-28 18:42" in blocky white font.
 
                 ONLY generate the prompt itself, avoid narrating or commenting.
+                ALWAYS include the exact phrase: "a shot from a high angle, inside a fisheye lens distortion glass circle, highly distorted with a wide angle"
                 ALWAYS include the COLOR of clothing items (top color, bottom color).
                 ALWAYS indicate what she's wearing (top, bottom, footwear/barefoot) based on context.
                 Generate a realistic timestamp based on the scene context (time of day, situation)."""

@@ -139,6 +139,35 @@ async def startup_event():
                 f.write(public_url)
         except Exception as e:
             logger.error(f"Failed to start Ngrok: {e}")
+    
+    # Auto-initialize session from launcher env vars (if present)
+    reverie_user = os.getenv("REVERIE_USER")
+    reverie_char = os.getenv("REVERIE_CHARACTER")
+    reverie_resume = os.getenv("REVERIE_RESUME")
+    
+    if reverie_user and reverie_char:
+        logger.info(f"Auto-initializing session from launcher: user={reverie_user}, character={reverie_char}, resume={reverie_resume}")
+        state.user_id = reverie_user
+        state.character_name = reverie_char
+        
+        # Initialize ConversationManager
+        state.conversation_manager = ConversationManager(state.character_name)
+        
+        if reverie_resume:
+            success = state.conversation_manager.resume_conversation(reverie_resume)
+            if success:
+                logger.info(f"Resumed session: {reverie_resume}")
+            else:
+                logger.warning(f"Failed to resume session: {reverie_resume}, starting new")
+                state.conversation_manager.set_log_file("latest_session")
+        else:
+            state.conversation_manager.set_log_file("latest_session")
+        
+        # Initialize ImageManager and TTSManager
+        state.image_manager = ImageManager(state.conversation_manager, state.character_name, state.api_manager)
+        state.tts_manager = TTSManager(state.character_name, state.conversation_manager)
+        
+        logger.info(f"Session auto-initialized for {state.character_name}")
 
 @app.post("/api/init")
 async def init_session(request: InitRequest):
@@ -1387,10 +1416,17 @@ async def get_settings():
         raise HTTPException(status_code=400, detail="Session not initialized")
         
     char_data = characters.get(state.character_name, {})
-    voy_mode_value = char_data.get("voy_mode", False)
-    logger.info(f"[Settings] character_name='{state.character_name}'")
-    logger.info(f"[Settings] char_data keys: {list(char_data.keys())}")
-    logger.info(f"[Settings] voy_mode in char_data: {'voy_mode' in char_data}, value={voy_mode_value}")
+    
+    # Get voy_mode from session (persisted in conversation_manager) rather than just character config
+    # This ensures resumed sessions maintain VOY mode even if launched with a different character param
+    voy_mode_value = False
+    if state.conversation_manager and hasattr(state.conversation_manager, 'voy_mode'):
+        voy_mode_value = state.conversation_manager.voy_mode
+    else:
+        voy_mode_value = char_data.get("voy_mode", False)
+    
+    logger.info(f"[Settings] character_name='{state.character_name}', voy_mode={voy_mode_value}")
+    
     return {
         "system_prompt": char_data.get("system_prompt", ""),
         "image_prompt": char_data.get("image_prompt", ""),

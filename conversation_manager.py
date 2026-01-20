@@ -21,6 +21,8 @@ class ConversationManager:
         self.output_folder = os.path.join(os.getcwd(), 'output')
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
+        # VOY mode - initialized from character, may be overridden on session resume
+        self.voy_mode = characters.get(character_name, {}).get("voy_mode", False)
 
     def add_user_message(self, message):
         if message != self.log_file_name_response:
@@ -172,6 +174,16 @@ class ConversationManager:
                 self.subfolder_path = full_directory_path
                 self.log_file = log_file_path
                 self.session_id = directory_path  # Use folder name as session ID
+                
+                # Load VOY mode from session metadata if it exists
+                metadata_path = os.path.join(full_directory_path, "session_metadata.json")
+                if os.path.exists(metadata_path):
+                    try:
+                        with open(metadata_path, 'r', encoding='utf-8') as f:
+                            metadata = json.load(f)
+                            self.voy_mode = metadata.get("voy_mode", False)
+                    except:
+                        pass
 
                 return True
         return False
@@ -185,7 +197,8 @@ class ConversationManager:
             "session_id": self.session_id,
             "character": self.character_name,
             "created_at": datetime.now().isoformat(),
-            "last_message_preview": ""
+            "last_message_preview": "",
+            "voy_mode": self.voy_mode  # Persist VOY mode for session resume
         }
         
         metadata_path = os.path.join(self.subfolder_path, "session_metadata.json")

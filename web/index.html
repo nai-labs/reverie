@@ -20,6 +20,7 @@
             <header>
                 <img src="logo.png" alt="Logo" class="logo-img">
                 <div class="controls">
+                    <button id="stealth-btn" class="icon-btn" title="Toggle Stealth Mode (hide media)">👁️</button>
                     <button id="sessions-btn" class="icon-btn" title="Browse Sessions">📂</button>
                     <button id="gallery-btn" class="icon-btn" title="Image Gallery">🖼️</button>
                     <button id="export-btn" class="icon-btn" title="Export Gallery">📥</button>
@@ -61,28 +62,41 @@
                     <button id="send-btn">Send</button>
                 </div>
                 <div class="action-buttons">
-                    <button id="gen-image-btn" class="action-btn">📸 Image</button>
-                    <button id="spycam-btn" class="action-btn">📹 Spycam</button>
-                    <button id="gen-image-direct-btn" class="action-btn">🎯 Direct</button>
+                    <!-- Image Tools -->
+                    <span class="btn-group-label">📸</span>
                     <select id="image-model-select" class="model-select">
                         <option value="">Loading models...</option>
                     </select>
+                    <button id="gen-image-btn" class="action-btn">Generate</button>
+                    <button id="spycam-btn" class="action-btn">Spycam</button>
+                    <button id="gen-image-direct-btn" class="action-btn">Direct</button>
+
+                    <span class="btn-separator"></span>
+
+                    <!-- Video Tools -->
+                    <span class="btn-group-label">🎥</span>
                     <select id="video-model-select" class="video-select">
                         <option value="wan">WAN S2V</option>
                         <option value="infinitetalk">InfiniteTalk</option>
                         <option value="infinitetalk-fast">InfiniteTalk Fast</option>
                         <option value="hunyuan-avatar">Hunyuan Avatar</option>
                     </select>
-                    <button id="gen-video-btn" class="action-btn">🎥 Generate</button>
-                    <button id="lora-video-btn" class="action-btn">🎬 WAN</button>
-                    <button id="script-tts-btn" class="action-btn">🎤 Script</button>
-                    <button id="director-btn" class="action-btn">🎬 Director</button>
+                    <button id="gen-video-btn" class="action-btn">Generate</button>
+                    <button id="lora-video-btn" class="action-btn">WAN+</button>
+                    <button id="director-btn" class="action-btn">Director</button>
+
+                    <span class="btn-separator"></span>
+
+                    <!-- Post-processing Tools -->
+                    <span class="btn-group-label">🔧</span>
+                    <button id="script-tts-btn" class="action-btn">Script</button>
                     <select id="lipsync-model-select" class="model-select">
-                        <option value="veed" selected>Veed (default)</option>
-                        <option value="pixverse">Pixverse (express)</option>
+                        <option value="veed" selected>Veed</option>
+                        <option value="pixverse">Pixverse</option>
                     </select>
-                    <button id="lipsync-btn" class="action-btn">🎙️ Lipsync</button>
+                    <button id="lipsync-btn" class="action-btn">Lipsync</button>
                 </div>
+
             </div>
         </div>
 
