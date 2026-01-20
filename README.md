@@ -27,6 +27,8 @@ A powerful, standalone local AI roleplay platform that brings your characters to
     *   Automatic face swap on all generated images (unless First-Person mode is on).
     *   "Use Last Frame" on videos automatically applies face swap.
     *   Per-image 🔄 Face button for on-demand face swapping.
+*   **Stealth Mode**: Toggle the 👁️ button to hide all media (images, videos, audio) behind clickable icons—perfect for privacy or work environments.
+*   **VOY Mode**: Enhanced viewing mode that auto-enables first-person perspective and automatically generates images after each bot response.
 *   **Session Resume**: Save and resume chat sessions, preserving conversation history and generated media.
 *   **Export Sessions**: Download full sessions as ZIP files with all media and history.
 *   **Remote Access**: Securely access your session from other devices on your local network with password protection.
