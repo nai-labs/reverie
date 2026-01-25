@@ -2,6 +2,11 @@ import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, filedialog
 import sys
+import platform
+
+# Platform detection
+IS_WINDOWS = sys.platform == 'win32'
+IS_MACOS = sys.platform == 'darwin'
 import json
 import subprocess
 import os
@@ -10,7 +15,9 @@ import psutil
 import re
 from datetime import datetime
 from PIL import Image, ImageTk
-import winsound
+# Platform-specific audio import
+if IS_WINDOWS:
+    import winsound
 import threading
 from users import users, list_users
 from characters import characters
@@ -229,14 +236,23 @@ class ConversationWindow:
 
     def on_image_click(self, event, image_path):
         try:
-            os.startfile(image_path)
+            if IS_WINDOWS:
+                os.startfile(image_path)
+            elif IS_MACOS:
+                subprocess.run(['open', image_path], check=True)
+            else:  # Linux
+                subprocess.run(['xdg-open', image_path], check=True)
         except Exception as e:
             print(f"Error opening image: {e}")
 
     def play_audio(self, audio_path):
         def play():
             try:
-                winsound.PlaySound(audio_path, winsound.SND_FILENAME)
+                if IS_WINDOWS:
+                    winsound.PlaySound(audio_path, winsound.SND_FILENAME)
+                else:
+                    from playsound3 import playsound
+                    playsound(audio_path)
             except Exception as e:
                 print(f"Error playing audio: {e}")
         threading.Thread(target=play, daemon=True).start()
@@ -275,8 +291,13 @@ class BotLauncher:
         y = (screen_height - window_height) // 2
         self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
         
-        # Start maximized on Windows
-        self.root.state('zoomed')
+        # Start maximized (cross-platform)
+        if IS_WINDOWS:
+            self.root.state('zoomed')
+        elif IS_MACOS:
+            # macOS: set geometry to screen size (Tkinter doesn't support -zoomed on Mac)
+            self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+        # Linux: leave default size, as 'zoomed' behavior varies
         
         self.processes = []
         self.conversation_windows = {}
@@ -963,8 +984,8 @@ class BotLauncher:
                 params['resume'] = resume_folder
             
             query_params = urllib.parse.urlencode(params)
-            # Disabled auto-open - user will open browser manually
-            # webbrowser.open(f"http://localhost:8000?{query_params}")
+            # Auto-open browser with user/character params for proper session init
+            webbrowser.open(f"http://localhost:8000?{query_params}")
             
             # Use cmd /k to keep window open on error for debugging
             env = os.environ.copy()
@@ -989,7 +1010,7 @@ class BotLauncher:
                 process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE, env=env)
             else:
                 cmd = [sys.executable, "server.py"]
-                process = subprocess.Popen(cmd, preexec_fn=os.setsid)
+                process = subprocess.Popen(cmd, preexec_fn=os.setsid, env=env)
                 
             p_info = ProcessInfo(process, user, char)
             self.processes.append(p_info)

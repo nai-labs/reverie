@@ -8,7 +8,6 @@ from PIL import Image
 from datetime import datetime
 from config import (
     STABLE_DIFFUSION_URL, 
-    OPENROUTER_KEY, 
     INSIGHTFACE_MODEL_PATH,
     IMAGE_WIDTH,
     IMAGE_HEIGHT,
@@ -500,36 +499,32 @@ Describe their physical performance as they deliver this."""
         
         system_prompt = """You are a video director creating prompts for LTX-2, an AI that generates synchronized video AND audio together.
 
-Your job is to write a detailed scene description that includes:
-1. **Video style** - Choose the most appropriate based on the scene's mood and context:
-   - Cinematic (dramatic, romantic, or intense scenes)
-   - Security camera/CCTV (sneaky, voyeuristic, or surveillance moments)
-   - Handheld phone video (intimate, candid, personal moments)
-   - Webcam/video call (casual conversations, confessional moments)
-   - Found footage/documentary (realistic, raw, discovered content)
+Your job is to describe WHAT SHE IS DOING - focus entirely on the person's physical performance, body language, movements, expressions, and vocalizations. Reference her in passing ("She...") and focus on:
 
-2. **Visual description** - Setting, lighting, character appearance and action
-3. **Camera details** - Angle, movement, framing
-4. **Dialogue** - Include the ACTUAL spoken lines in quotes (LTX-2 will generate the speech)
-5. **Audio atmosphere** - Ambient sounds, music mood, background noise
+1. **Posture & Position** - How she's sitting/standing/lying, body orientation
+2. **Physical Actions** - What her body is doing, gestures, hand movements
+3. **Breathing & Tension** - Uneven breath, tightening muscles, relaxing, trembling
+4. **Facial Expressions** - Eyes widening, biting lip, surprised look, intensity, vulnerability
+5. **Involuntary Reactions** - any physical involuntary reactions, including but NOT limited to breaths, Gasps, shivers, tremors, jerks, twitches, startled movements
+6. **Vocalizations** - Speaking, whispering, moaning, gasping, sighing (include actual dialogue in quotes)
+7. **Emotional State** - Caught off-guard, overwhelmed, struggling to maintain composure
 
-FORMAT: Write as a single flowing paragraph, like briefing a film crew. Start with the style/camera type, then describe the scene.
+FORMAT: Write as a flowing description of her physical performance. Start with her position, then describe her movements, reactions, and emotional state as the scene unfolds.
 
 EXAMPLES:
 
-Security camera footage from a bedroom corner, grainy night vision. A woman in pajamas sits on the edge of her bed, illuminated by phone screen glow. She speaks quietly into the phone: "I can't stop thinking about what you said..." Soft ambient room noise, distant city sounds through the window.
+- She is seated upright in the saddle, gripping the reins as the horse moves at a steady trot. Her breathing becomes uneven and her posture tightens; her eyes widen with a startled expression as she shifts her weight. Small tremors move through her shoulders and arms, and her hands momentarily lose precision on the reins. Her hips tense and subtly jerk with the rhythm, and she gasps, looking down as if surprised by her own reaction. Her whole frame shakes with short, involuntary motions, her expression caught somewhere between surprise and intensity.
 
-Handheld phone video, slightly shaky, intimate framing. A woman in a tank top lies on her stomach on a bed, propped on elbows, speaking directly to camera with a playful smile. She says "So I have this crazy idea..." and bites her lip. Warm bedroom lighting, casual atmosphere, soft background music from a speaker.
+- She lies on her stomach on the bed, propped on her elbows, speaking directly to camera. "So I have this crazy idea..." She bites her lower lip, her eyes flickering with mischief. Her shoulders roll slightly as she shifts her weight, and she lets out a soft, breathy laugh.
 
-Cinematic shot, shallow depth of field, golden hour lighting. A woman walks along a beach at sunset, hair blowing in the wind. She turns to camera and says "I've been waiting for this moment." Waves crashing, seagulls in distance, romantic atmosphere.
+- She sits at her desk, leaning toward the camera with furrowed brows. Her fingers tap nervously on the table as she whispers: "Don't tell anyone, but..." She glances over her shoulder, then back, her expression a mix of conspiracy and excitement. A small shiver runs through her.
 
-Webcam footage, static front-facing view. A woman sits at her desk in a dimly lit room, leaning close to the camera. She whispers conspiratorially: "Don't tell anyone, but..." Keyboard typing sounds, computer fan hum, intimate late-night ambiance.
+- She walks slowly, her steps deliberate, arms wrapped around herself. Her breath comes in short, visible puffs. She pauses, closes her eyes tight, and her whole body shudders. "I'm fine," she says, voice cracking, but tears are already welling up in her eyes.
 
 IMPORTANT:
-- Extract and include the ACTUAL dialogue from the message in quotes
-- Choose the video style that FITS the mood (don't always use cinematic)
-- Include specific audio/ambient details since LTX-2 generates sound
-- Keep it under 100 words but make it vivid""" + (f"\n\n{style_guidance}" if style_guidance else "")
+- Include actual dialogue in quotes for LTX-2 to generate speech
+- Capture emotional intensity through physical description
+- Keep it under 100 words but make it visceral and vivid""" + (f"\n\n{style_guidance}" if style_guidance else "")
 
         user_prompt = f"""Character's last message:
 
@@ -556,65 +551,3 @@ Create a detailed LTX-2 video prompt including the spoken dialogue."""
         except Exception as e:
             logger.error(f"[LTX Prompt] Exception: {e}", exc_info=True)
             return "A woman looks at the camera and speaks warmly. Soft indoor lighting, casual atmosphere."
-
-
-        ethnicity_match = re.search(r'\b(?:\d+(?:-year-old)?[\s-]?)?(?:asian|lebanese|black|african|caucasian|white|hispanic|latino|latina|mexican|european|middle eastern|indian|native american|pacific islander|mixed race|biracial|multiracial|[^\s]+?(?=\s+(?:girl|woman|lady|female|man|guy|male|dude)))\b', self.image_prompt, re.IGNORECASE)
-        if ethnicity_match:
-            ethnicity = ethnicity_match.group()
-        else:
-            ethnicity = "unknown ethnicity"
-
-        context = ""
-        if len(conversation) > 0:
-            # Get bot messages
-            bot_messages = [msg["content"] for msg in conversation if msg["role"] == "assistant"]
-            # Get last 3 messages (or all if less than 3)
-            bot_messages = bot_messages[-3:] if len(bot_messages) >= 3 else bot_messages
-            combined_context = "\n".join(bot_messages)
-            
-            logger.info(f"Generating video prompt using {len(bot_messages)} bot messages")
-            for i, msg in enumerate(bot_messages, 1):
-                logger.debug(f"Message {i} preview: {msg[:200]}...")
-            context = f"""
-            Based on the following conversation:\n{combined_context}\n\n and this character description:\n{self.image_prompt}\n\nGenerate a short, descriptive video generation prompt to create an animated video of the character, considering their ethnicity: {ethnicity}.
-            
-            The prompt should follow this format:
-            A [age] [ethnicity] [gender] with [physical features], [expression/emotion] while talking, [head/body position], how she's moving and what her body is doing [lighting/atmosphere], [background/setting]
-            
-            EXAMPLES:
-            A 24-year-old asian woman with long black hair and soft features, speaking expressively with a slight smile, head tilted slightly, shifting in her seat while she crosses her legs, warm indoor lighting, cozy bedroom setting
-            
-            A young caucasian woman with blonde hair and bright eyes, talking animatedly with changing expressions, as she's walking around her apartent and looking in the mirror, casual head movements, natural daylight from window, modern apartment interior
-            
-            IMPORTANT:
-            - Focus on facial features and expressions, as well as body language, since this is for a video
-            - Include natural head movements and expression changes
-            - Include body movements, and prompting about how the character is moving and activities she's doing.
-            - Describe the lighting and atmosphere that matches the conversation mood, and anything moving in the background.
-            - Keep it a short, descriptive video prompt for a video generator AI.
-            
-            ONLY generate the prompt itself, no commentary or explanations."""
-
-        prompt = f"{{video_generation_prompt}}\n{context}"
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant that generates video prompts."},
-            {"role": "user", "content": prompt}
-        ]
-
-        api_url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_KEY}",
-            "HTTP-Referer": "https://discord.com/api/oauth2/authorize?client_id=1139328683987980288&permissions=1084479764544&scope=bot",
-            "X-Title": "my-discord-bot",
-            "Content-Type": "application/json"
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(api_url, json={"model": "x-ai/grok-3-beta", "temperature": 0.5, "max_tokens": 128, "messages": messages}, headers=headers) as response:
-                response_json = await response.json()
-                if 'choices' in response_json and len(response_json['choices']) > 0:
-                    video_prompt = response_json['choices'][0]['message']['content']
-                    logger.info(f"Generated video prompt: {video_prompt}")
-                    return video_prompt
-                else:
-                    return None

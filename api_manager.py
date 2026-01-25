@@ -2,10 +2,8 @@ import asyncio
 import aiohttp
 import json
 import logging
-from config import (OPENROUTER_URL, ANTHROPIC_URL, OPENROUTER_HEADERS, ANTHROPIC_HEADERS, 
-                   OPENROUTER_MODELS, CLAUDE_MODELS, DEFAULT_CLAUDE_MODEL, ANTHROPIC_MAX_TOKENS, 
-                   LMSTUDIO_MAX_TOKENS, DEFAULT_LLM, LMSTUDIO_URL, LMSTUDIO_HEADERS, OPENROUTER_MODEL,
-                   MAX_RETRIES, RETRY_BASE_DELAY)
+
+from config import get_settings
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,29 +13,37 @@ class APIManager:
     async def _retry_request(self, request_func, *args, **kwargs):
         """Wraps an async request with retry logic and exponential backoff."""
         last_error = None
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(self.settings.max_retries):
             try:
                 return await request_func(*args, **kwargs)
             except aiohttp.ClientError as e:
                 last_error = e
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
-                    logger.warning(f"Request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                if attempt < self.settings.max_retries - 1:
+                    delay = self.settings.retry_base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"Request failed (attempt {attempt + 1}/{self.settings.max_retries}): {e}. Retrying in {delay}s..."
+                    )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"Request failed after {MAX_RETRIES} attempts: {e}")
+                    logger.error(f"Request failed after {self.settings.max_retries} attempts: {e}")
         raise last_error
 
-    def __init__(self, llm_settings=None):
-        # Set defaults for main conversation LLM
-        self.current_llm = DEFAULT_LLM
-        self.current_claude_model = DEFAULT_CLAUDE_MODEL
-        self.current_openrouter_model = OPENROUTER_MODEL
-        self.current_lmstudio_model = None # Assuming LMStudio is not the default
+    def __init__(self, settings=None, llm_settings=None):
+        if settings is not None and isinstance(settings, dict) and llm_settings is None:
+            llm_settings = settings
+            settings = None
 
-        # Set defaults for media generation LLM (assuming OpenRouter is default)
-        self.media_llm_provider = "openrouter"
-        self.media_llm_model = OPENROUTER_MODEL # Default media model
+        self.settings = settings or get_settings(refresh=True)
+
+        # Set defaults for main conversation LLM
+        self.current_llm = self.settings.default_llm
+        self.current_claude_model = self.settings.default_claude_model
+        self.current_openrouter_model = self.settings.default_openrouter_model
+        self.current_lmstudio_model = self.settings.default_lmstudio_model
+
+        # Set defaults for media generation LLM
+        self.media_llm_provider = self.settings.default_media_llm_provider
+        self.media_llm_model = self.settings.default_media_llm_model
 
         # Override with llm_settings if provided
         if llm_settings:
@@ -87,7 +93,7 @@ class APIManager:
         return response_text
 
     async def generate_anthropic_response(self, message, conversation, system_prompt):
-        headers = ANTHROPIC_HEADERS.copy()
+        headers = self.settings.anthropic_headers.copy()
 
         # Prepare messages
         messages = [
@@ -100,7 +106,7 @@ class APIManager:
             "model": self.current_claude_model,
             "messages": messages,
             "system": system_prompt,
-            "max_tokens": ANTHROPIC_MAX_TOKENS,
+            "max_tokens": self.settings.anthropic_max_tokens,
             "temperature": 0.7,
         }
 
@@ -110,10 +116,10 @@ class APIManager:
         logger.debug(f"Number of messages sent to API: {len(messages)}")
 
         last_error = None
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(self.settings.max_retries):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(ANTHROPIC_URL, json=data, headers=headers) as response:
+                    async with session.post(self.settings.anthropic_url, json=data, headers=headers) as response:
                         response_json = await response.json()
                         if response.status == 200:
                             if 'content' in response_json:
@@ -140,12 +146,14 @@ class APIManager:
                             return "I apologize, but I encountered an error while processing your request."
             except aiohttp.ClientError as e:
                 last_error = e
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
-                    logger.warning(f"Anthropic request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                if attempt < self.settings.max_retries - 1:
+                    delay = self.settings.retry_base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"Anthropic request failed (attempt {attempt + 1}/{self.settings.max_retries}): {e}. Retrying in {delay}s..."
+                    )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"Anthropic request failed after {MAX_RETRIES} attempts: {e}")
+                    logger.error(f"Request failed after {self.settings.max_retries} attempts: {e}")
             except Exception as e:
                 logger.error(f"Error in generate_anthropic_response: {str(e)}", exc_info=True)
                 return "I apologize, but I encountered an error while processing your request."
@@ -180,7 +188,7 @@ class APIManager:
         try:
             async with aiohttp.ClientSession() as session:
                 # Using OPENROUTER_HEADERS defined in config
-                async with session.post(OPENROUTER_URL, json=data, headers=OPENROUTER_HEADERS) as response:
+                async with session.post(self.settings.openrouter_url, json=data, headers=self.settings.openrouter_headers) as response:
                     response_json = await response.json()
                     logger.debug(f"Media LLM (OpenRouter) Response Status: {response.status}")
                     logger.debug(f"Media LLM (OpenRouter) Response: {json.dumps(response_json, indent=2)}")
@@ -263,10 +271,10 @@ class APIManager:
         logger.debug(f"OpenRouter Request - Model: {self.current_openrouter_model}")
         logger.debug(f"OpenRouter Request - Number of messages: {len(messages)}")
 
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(self.settings.max_retries):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(OPENROUTER_URL, json=data, headers=OPENROUTER_HEADERS) as response:
+                    async with session.post(self.settings.openrouter_url, json=data, headers=self.settings.openrouter_headers) as response:
                         response_json = await response.json()
                         logger.debug(f"OpenRouter Response Status: {response.status}")
                         logger.debug(f"OpenRouter Response: {json.dumps(response_json, indent=2)}")
@@ -282,12 +290,14 @@ class APIManager:
                             logger.error("No choices in OpenRouter response")
                             return "No response generated - missing choices in response."
             except aiohttp.ClientError as e:
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
-                    logger.warning(f"OpenRouter request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                if attempt < self.settings.max_retries - 1:
+                    delay = self.settings.retry_base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"OpenRouter request failed (attempt {attempt + 1}/{self.settings.max_retries}): {e}. Retrying in {delay}s..."
+                    )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"OpenRouter request failed after {MAX_RETRIES} attempts: {e}")
+                    logger.error(f"OpenRouter request failed after {self.settings.max_retries} attempts: {e}")
                     return "I'm having trouble connecting to the OpenRouter service right now. Please try again."
             except Exception as e:
                 logger.error(f"Error in generate_openrouter_response: {str(e)}", exc_info=True)
@@ -302,15 +312,15 @@ class APIManager:
             {"role": "user", "content": message}
         ]
 
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(self.settings.max_retries):
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(LMSTUDIO_URL, json={
+                    async with session.post(self.settings.lmstudio_url, json={
                         "model": self.current_lmstudio_model,
                         "messages": messages,
-                        "max_tokens": LMSTUDIO_MAX_TOKENS,
+                        "max_tokens": self.settings.lmstudio_max_tokens,
                         "temperature": 0.7,
-                    }, headers=LMSTUDIO_HEADERS) as response:
+                    }, headers=self.settings.lmstudio_headers) as response:
                         if response.status != 200:
                             logger.error(f"LMStudio API returned status {response.status}")
                             return "LMStudio service returned an error."
@@ -322,12 +332,14 @@ class APIManager:
                         else:
                             return "No response generated from LMStudio."
             except aiohttp.ClientError as e:
-                if attempt < MAX_RETRIES - 1:
-                    delay = RETRY_BASE_DELAY * (2 ** attempt)
-                    logger.warning(f"LMStudio request failed (attempt {attempt + 1}/{MAX_RETRIES}): {e}. Retrying in {delay}s...")
+                if attempt < self.settings.max_retries - 1:
+                    delay = self.settings.retry_base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"LMStudio request failed (attempt {attempt + 1}/{self.settings.max_retries}): {e}. Retrying in {delay}s..."
+                    )
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(f"LMStudio request failed after {MAX_RETRIES} attempts: {e}")
+                    logger.error(f"OpenRouter request failed after {self.settings.max_retries} attempts: {e}")
                     return "I cannot connect to the local LMStudio server. Is it running?"
             except Exception as e:
                 logger.error(f"Error in generate_lmstudio_response: {str(e)}", exc_info=True)
@@ -337,7 +349,7 @@ class APIManager:
 
     async def fetch_lmstudio_models(self):
         async with aiohttp.ClientSession() as session:
-            async with session.get(LMSTUDIO_URL.replace('chat/completions', 'models'), headers=LMSTUDIO_HEADERS) as response:
+            async with session.get(self.settings.lmstudio_url.replace('chat/completions', 'models'), headers=self.settings.lmstudio_headers) as response:
                 if response.status == 200:
                     models_json = await response.json()
                     return [model['id'] for model in models_json.get('data', [])]
@@ -364,7 +376,7 @@ class APIManager:
             return self.current_lmstudio_model
 
     def switch_claude_model(self, model_code):
-        for full_name, short_code in CLAUDE_MODELS.items():
+        for full_name, short_code in self.settings.claude_models.items():
             if model_code.lower() == short_code.lower():
                 self.current_claude_model = full_name
                 self.current_llm = "anthropic"
@@ -372,7 +384,7 @@ class APIManager:
         return False
 
     def switch_openrouter_model(self, model_code):
-        for full_name, short_code in OPENROUTER_MODELS.items():
+        for full_name, short_code in self.settings.openrouter_models.items():
             if model_code.lower() == short_code.lower():
                 self.current_openrouter_model = full_name
                 self.current_llm = "openrouter"

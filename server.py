@@ -27,7 +27,8 @@ from config import (
     characters,
     USE_NGROK,
     NGROK_AUTH_TOKEN,
-    SD_CHECKPOINTS_FOLDER
+    SD_CHECKPOINTS_FOLDER,
+    STABLE_DIFFUSION_URL
 )
 
 # Setup logging
@@ -412,24 +413,61 @@ async def generate_script_tts(request: ScriptTTSRequest):
 
 @app.get("/api/image-models")
 async def get_image_models():
-    """Scan SD checkpoints folder and return available models for dropdown."""
-    import glob
+    """Fetch available models from SD API (supports remote instances)."""
+    import aiohttp
     
     models = []
     
-    # Scan for .safetensors and .gguf files in the checkpoints folder
-    if os.path.exists(SD_CHECKPOINTS_FOLDER):
-        # Support multiple model file extensions
+    # Try to fetch models from SD API (works for local or remote SD)
+    try:
+        # Construct the sd-models endpoint from the txt2img URL
+        sd_base_url = STABLE_DIFFUSION_URL.replace("/sdapi/v1/txt2img", "")
+        sd_models_url = f"{sd_base_url}/sdapi/v1/sd-models"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(sd_models_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    sd_models = await resp.json()
+                    
+                    for model in sd_models:
+                        # model_name is the full path, title is the display name
+                        filename = model.get("model_name", model.get("title", ""))
+                        name_without_ext = filename.rsplit('.', 1)[0] if '.' in filename else filename
+                        
+                        # Determine mode from filename prefix
+                        name_lower = name_without_ext.lower()
+                        if name_lower.startswith('zimage') or name_lower.startswith('z_image') or name_lower.startswith('z-image'):
+                            mode = 'lumina'
+                        else:
+                            mode = 'xl'
+                        
+                        models.append({
+                            "value": filename,
+                            "label": name_without_ext,
+                            "mode": mode,
+                            "filename": filename
+                        })
+                    
+                    # Sort alphabetically, but put z-image models first
+                    models.sort(key=lambda x: (0 if x['mode'] == 'lumina' else 1, x['label'].lower()))
+                    logger.info(f"Fetched {len(models)} models from SD API at {sd_models_url}")
+                else:
+                    logger.warning(f"SD API returned status {resp.status} when fetching models")
+    except aiohttp.ClientError as e:
+        logger.warning(f"Could not connect to SD API to fetch models: {e}")
+    except Exception as e:
+        logger.warning(f"Error fetching models from SD API: {e}")
+    
+    # Fallback: scan local folder if API fetch failed and folder exists
+    if not models and os.path.exists(SD_CHECKPOINTS_FOLDER):
+        import glob
         extensions = ["*.safetensors", "*.gguf"]
         for ext in extensions:
             pattern = os.path.join(SD_CHECKPOINTS_FOLDER, ext)
             for filepath in glob.glob(pattern):
                 filename = os.path.basename(filepath)
-                # Remove extension to get model name
                 name_without_ext = filename.rsplit('.', 1)[0]
                 
-                # Determine mode from filename prefix
-                # zImage*, z_image*, z-image* (any casing) → lumina mode
                 name_lower = name_without_ext.lower()
                 if name_lower.startswith('zimage') or name_lower.startswith('z_image') or name_lower.startswith('z-image'):
                     mode = 'lumina'
@@ -437,16 +475,16 @@ async def get_image_models():
                     mode = 'xl'
                 
                 models.append({
-                    "value": filename,  # Use full filename with extension as value
-                    "label": name_without_ext,  # Display name without extension
+                    "value": filename,
+                    "label": name_without_ext,
                     "mode": mode,
                     "filename": filename
                 })
         
-        # Sort alphabetically, but put z-image models first
         models.sort(key=lambda x: (0 if x['mode'] == 'lumina' else 1, x['label'].lower()))
-    else:
-        logger.warning(f"SD checkpoints folder not found: {SD_CHECKPOINTS_FOLDER}")
+    
+    if not models:
+        logger.warning(f"No SD models found (API unreachable and local folder doesn't exist: {SD_CHECKPOINTS_FOLDER})")
     
     # Add Qwen cloud option at the end
     models.append({
